@@ -17,10 +17,9 @@ export class Environment {
     META_GRAPH_API_VERSION: yup.string().optional().default('v21.0'),
     META_TOKENS_ENCRYPTION_KEY: yup.string().optional(),
 
-    // Login da empresa no Instagram (Instagram API with Instagram Login).
     INSTAGRAM_APP_ID: yup.string().optional(),
     INSTAGRAM_APP_SECRET: yup.string().optional(),
-    INSTAGRAM_REDIRECT_URI: yup.string().url().optional(),
+    INSTAGRAM_REDIRECT_URI: yup.string().optional(),
     INSTAGRAM_SCOPES: yup
       .string()
       .optional()
@@ -29,14 +28,9 @@ export class Environment {
       ),
     INSTAGRAM_GRAPH_API_VERSION: yup.string().optional().default('v25.0'),
 
-    /** Origem do frontend, para onde o callback OAuth devolve o usuário. */
-    FRONTEND_URL: yup
-      .string()
-      .url()
-      .optional()
-      .default('http://localhost:5173'),
+    FRONTEND_URL: yup.string().optional().default('http://localhost:5173'),
 
-    UPSTASH_REDIS_REST_URL: yup.string().url().required(),
+    UPSTASH_REDIS_REST_URL: yup.string().required(),
     UPSTASH_REDIS_REST_TOKEN: yup.string().required(),
 
     JWT_SECRET: yup

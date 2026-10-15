@@ -17,6 +17,14 @@ export class DomainError extends AppError {
     return new DomainError(404, 'TENANT_NOT_FOUND');
   }
 
+  static expertNotFound(): DomainError {
+    return new DomainError(404, 'EXPERT_NOT_FOUND');
+  }
+
+  static forbidden(): DomainError {
+    return new DomainError(403, 'FORBIDDEN');
+  }
+
   static validationFailed(data: object | null = null): DomainError {
     return new DomainError(400, 'VALIDATION_FAILED', data);
   }
