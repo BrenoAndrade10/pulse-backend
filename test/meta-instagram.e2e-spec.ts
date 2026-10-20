@@ -5,7 +5,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { Environment } from '../src/config/Environment';
 import { configureApp } from '../src/configureApp';
-import { DATA_SOURCE } from '../src/database/tokens';
+import { DATA_SOURCE } from '../src/infra/database/tokens';
 import { AUTH_ACCOUNTS_REPOSITORY } from '../src/modules/auth/domain/repositories/AuthAccountsRepository';
 import { SESSIONS_REPOSITORY } from '../src/modules/auth/domain/repositories/SessionsRepository';
 import { InMemoryAuthAccountsRepository } from '../src/modules/auth/infra/repositories/InMemoryAuthAccountsRepository';
@@ -13,8 +13,9 @@ import { InMemorySessionsRepository } from '../src/modules/auth/infra/repositori
 import { Expert } from '../src/modules/experts/domain/entities/Expert';
 import { ExpertStatus } from '../src/modules/experts/domain/enums/ExpertStatus';
 import { EXPERTS_REPOSITORY } from '../src/modules/experts/domain/repositories/ExpertsRepository';
-import type { ExpertMetaCredential } from '../src/modules/meta/domain/entities/ExpertMetaCredential';
-import { EXPERT_META_CREDENTIALS_REPOSITORY } from '../src/modules/meta/domain/repositories/ExpertMetaCredentialsRepository';
+import type { IntegrationAccount } from '../src/modules/integrations/domain/entities/IntegrationAccount';
+import type { IntegrationCredential } from '../src/modules/integrations/domain/entities/IntegrationCredential';
+import { INTEGRATION_CREDENTIALS_REPOSITORY } from '../src/modules/integrations/domain/repositories/IntegrationCredentialsRepository';
 import {
   OAUTH_STATE_STORE,
   type InstagramOAuthState,
@@ -39,7 +40,8 @@ describe('Instagram business login (e2e)', () => {
   const ids = new UuidV7IdGenerator();
   const tenantId = ids.generate();
   const states = new Map<string, InstagramOAuthState>();
-  const credentials: ExpertMetaCredential[] = [];
+  const credentials: IntegrationCredential[] = [];
+  const connectedAccounts: IntegrationAccount[] = [];
   let app: NestExpressApplication;
   let expert: Expert;
 
@@ -79,6 +81,8 @@ describe('Instagram business login (e2e)', () => {
       INSTAGRAM_SCOPES: 'instagram_business_basic',
       INSTAGRAM_GRAPH_API_VERSION: 'v25.0',
       FRONTEND_URL: FRONTEND,
+      TRACKING_SCRIPT_URL: 'https://cdn.test/p.js',
+      TRACKING_ALLOW_LOCAL_PAGES: false,
     };
 
     const now = new Date();
@@ -120,11 +124,15 @@ describe('Instagram business login (e2e)', () => {
         findById: (id: string) =>
           Promise.resolve(id === expert.id ? expert : null),
       })
-      .overrideProvider(EXPERT_META_CREDENTIALS_REPOSITORY)
+      .overrideProvider(INTEGRATION_CREDENTIALS_REPOSITORY)
       .useValue({
-        replaceActive: (credential: ExpertMetaCredential) => {
+        replaceActive: (
+          credential: IntegrationCredential,
+          accounts: IntegrationAccount[],
+        ) => {
           credentials.push(credential);
-          return Promise.resolve(credential);
+          connectedAccounts.push(...accounts);
+          return Promise.resolve();
         },
       })
       .overrideProvider(OAUTH_STATE_STORE)
@@ -188,12 +196,18 @@ describe('Instagram business login (e2e)', () => {
       .expect(302);
 
     expect(callback.headers.location).toBe(
-      `${FRONTEND}/experts/${expert.id}?instagram=connected#facebook`,
+      `${FRONTEND}/experts/${expert.id}?instagram=connected#instagram`,
     );
     expect(callback.headers['cache-control']).toBe('no-store');
     expect(callback.headers['referrer-policy']).toBe('no-referrer');
     expect(credentials).toHaveLength(1);
-    expect(credentials[0].instagramUsername).toBe('carlaexpert');
+    expect(credentials[0].provider).toBe('instagram');
+    expect(connectedAccounts).toHaveLength(1);
+    expect(connectedAccounts[0]).toMatchObject({
+      credentialId: credentials[0].id,
+      externalId: '178414',
+      displayName: 'carlaexpert',
+    });
   });
 
   it('rejects forged states without touching any expert', async () => {
@@ -203,7 +217,7 @@ describe('Instagram business login (e2e)', () => {
       .expect(302);
 
     expect(callback.headers.location).toBe(
-      `${FRONTEND}/experts?instagram=error&reason=invalid_state#facebook`,
+      `${FRONTEND}/experts?instagram=error&reason=invalid_state#instagram`,
     );
   });
 
@@ -229,7 +243,7 @@ describe('Instagram business login (e2e)', () => {
       .expect(302);
 
     expect(callback.headers.location).toBe(
-      `${FRONTEND}/experts/${expert.id}?instagram=error&reason=denied#facebook`,
+      `${FRONTEND}/experts/${expert.id}?instagram=error&reason=denied#instagram`,
     );
   });
 });

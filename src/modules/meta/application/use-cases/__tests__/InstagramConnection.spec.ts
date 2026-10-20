@@ -5,8 +5,13 @@ import { UuidV7IdGenerator } from '../../../../../shared/infra/ids/UuidV7IdGener
 import { Expert } from '../../../../experts/domain/entities/Expert';
 import { ExpertStatus } from '../../../../experts/domain/enums/ExpertStatus';
 import type { ExpertsRepository } from '../../../../experts/domain/repositories/ExpertsRepository';
-import type { ExpertMetaCredential } from '../../../domain/entities/ExpertMetaCredential';
-import type { ExpertMetaCredentialsRepository } from '../../../domain/repositories/ExpertMetaCredentialsRepository';
+import type { IntegrationAccount } from '../../../../integrations/domain/entities/IntegrationAccount';
+import type { IntegrationCredential } from '../../../../integrations/domain/entities/IntegrationCredential';
+import { IntegrationAccountType } from '../../../../integrations/domain/enums/IntegrationAccountType';
+import { IntegrationCredentialStatus } from '../../../../integrations/domain/enums/IntegrationCredentialStatus';
+import { IntegrationProvider } from '../../../../integrations/domain/enums/IntegrationProvider';
+import type { IntegrationCredentialsRepository } from '../../../../integrations/domain/repositories/IntegrationCredentialsRepository';
+import { IntegrationTokenEncryptionService } from '../../../../integrations/infra/crypto/IntegrationTokenEncryptionService';
 import type {
   InstagramOAuthState,
   OAuthStateStore,
@@ -15,7 +20,6 @@ import {
   InstagramOAuthError,
   type InstagramOAuthGateway,
 } from '../../../domain/services/InstagramOAuthGateway';
-import { MetaTokenEncryptionService } from '../../../infra/crypto/MetaTokenEncryptionService';
 import { CompleteInstagramConnectionUseCase } from '../CompleteInstagramConnectionUseCase';
 import { StartInstagramConnectionUseCase } from '../StartInstagramConnectionUseCase';
 
@@ -51,27 +55,29 @@ class InMemoryExpertsRepository implements ExpertsRepository {
   }
 }
 
-class InMemoryCredentialsRepository implements ExpertMetaCredentialsRepository {
-  readonly credentials: ExpertMetaCredential[] = [];
-
-  create(credential: ExpertMetaCredential): Promise<ExpertMetaCredential> {
-    this.credentials.push(credential);
-    return Promise.resolve(credential);
-  }
+class InMemoryCredentialsRepository implements IntegrationCredentialsRepository {
+  readonly credentials: IntegrationCredential[] = [];
+  readonly accounts: IntegrationAccount[] = [];
 
   replaceActive(
-    credential: ExpertMetaCredential,
-  ): Promise<ExpertMetaCredential> {
+    credential: IntegrationCredential,
+    accounts: IntegrationAccount[],
+  ): Promise<void> {
     this.credentials.push(credential);
-    return Promise.resolve(credential);
+    this.accounts.push(...accounts);
+    return Promise.resolve();
   }
 
-  findActiveByExpertId(): Promise<ExpertMetaCredential | null> {
+  revokeActive(): Promise<boolean> {
+    return Promise.resolve(false);
+  }
+
+  findActiveWithAccessToken(): Promise<IntegrationCredential | null> {
     return Promise.resolve(null);
   }
 
-  findByInstagramUserId(): Promise<ExpertMetaCredential | null> {
-    return Promise.resolve(null);
+  findActiveByTenantId(): Promise<IntegrationCredential[]> {
+    return Promise.resolve([]);
   }
 }
 
@@ -106,7 +112,7 @@ describe('Instagram connection', () => {
   let stateStore: InMemoryStateStore;
   let experts: InMemoryExpertsRepository;
   let credentials: InMemoryCredentialsRepository;
-  const cipher = new MetaTokenEncryptionService();
+  const cipher = new IntegrationTokenEncryptionService();
 
   beforeEach(() => {
     Environment.vars = {
@@ -244,15 +250,41 @@ describe('Instagram connection', () => {
       expect(credential).toMatchObject({
         tenantId,
         expertId: expert.id,
-        instagramUserId: '178414',
-        instagramUsername: 'carlaexpert',
-        metaUserId: '111',
-        isActive: true,
+        provider: IntegrationProvider.INSTAGRAM,
+        externalUserId: '111',
+        status: IntegrationCredentialStatus.ACTIVE,
       });
-      expect(credential.accessToken.encryptedValue).not.toContain(
+      // A conta (sem segredo) fica separada da credencial e aponta para ela.
+      expect(credentials.accounts).toHaveLength(1);
+      expect(credentials.accounts[0]).toMatchObject({
+        tenantId,
+        expertId: expert.id,
+        credentialId: credential.id,
+        provider: IntegrationProvider.INSTAGRAM,
+        type: IntegrationAccountType.INSTAGRAM_ACCOUNT,
+        externalId: '178414',
+        displayName: 'carlaexpert',
+      });
+      expect(credential.accessToken!.encryptedValue).not.toContain(
         'long-lived-token',
       );
-      expect(cipher.decrypt(credential.accessToken)).toBe('long-lived-token');
+      const owner = {
+        tenantId,
+        expertId: expert.id,
+        credentialId: credential.id,
+        provider: IntegrationProvider.INSTAGRAM,
+        purpose: 'access_token' as const,
+      };
+      expect(cipher.decrypt(credential.accessToken!, owner)).toBe(
+        'long-lived-token',
+      );
+      // Preso ao registro: não decifra como se fosse de outro expert.
+      expect(() =>
+        cipher.decrypt(credential.accessToken!, {
+          ...owner,
+          expertId: 'other-expert',
+        }),
+      ).toThrow(DomainError);
       expect(credential.tokenExpiresAt!.getTime()).toBeGreaterThan(
         Date.now() + 59 * 24 * 3600 * 1000,
       );

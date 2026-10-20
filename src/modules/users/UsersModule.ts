@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
-import { DATA_SOURCE } from '../../database/tokens';
+import { DATA_SOURCE } from '../../infra/database/tokens';
 import { REGISTER_TENANT_USER_TRANSACTION } from './application/transactions/RegisterTenantUserTransaction';
 import { RegisterTenantUserUseCase } from './application/use-cases/RegisterTenantUserUseCase';
 import { TypeOrmRegisterTenantUserTransaction } from './infra/transactions/TypeOrmRegisterTenantUserTransaction';

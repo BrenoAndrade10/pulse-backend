@@ -4,7 +4,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { Environment } from '../src/config/Environment';
 import { configureApp } from '../src/configureApp';
-import { DATA_SOURCE } from '../src/database/tokens';
+import { DATA_SOURCE } from '../src/infra/database/tokens';
 import { AUTH_ACCOUNTS_REPOSITORY } from '../src/modules/auth/domain/repositories/AuthAccountsRepository';
 import { SESSIONS_REPOSITORY } from '../src/modules/auth/domain/repositories/SessionsRepository';
 import { InMemoryAuthAccountsRepository } from '../src/modules/auth/infra/repositories/InMemoryAuthAccountsRepository';
@@ -45,6 +45,8 @@ describe('Auth (e2e)', () => {
       INSTAGRAM_SCOPES: 'instagram_business_basic',
       INSTAGRAM_GRAPH_API_VERSION: 'v25.0',
       FRONTEND_URL: ORIGIN,
+      TRACKING_SCRIPT_URL: 'https://cdn.test/p.js',
+      TRACKING_ALLOW_LOCAL_PAGES: false,
     };
 
     const accountsRepository = new InMemoryAuthAccountsRepository();
@@ -112,7 +114,7 @@ describe('Auth (e2e)', () => {
 
     // Rotas protegidas exigem token; rotas @Public() não.
     await request(server)
-      .get('/meta/reels')
+      .get('/experts')
       .expect(401)
       .expect(expectReason('UNAUTHENTICATED'));
     await request(server).get('/').expect(200);

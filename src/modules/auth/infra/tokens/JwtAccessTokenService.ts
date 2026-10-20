@@ -10,10 +10,6 @@ type AccessTokenPayload = {
   role: UserRole | null;
 };
 
-/**
- * O JwtService recebido já vem configurado com segredo, algoritmo fixo
- * (HS256), issuer, audience e expiração — ver AuthModule.
- */
 export class JwtAccessTokenService implements AccessTokenService {
   constructor(private readonly jwtService: JwtService) {}
 

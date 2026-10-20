@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { Redis } from '@upstash/redis';
 import type { DataSource } from 'typeorm';
 import { Environment } from '../../config/Environment';
-import { DATA_SOURCE } from '../../database/tokens';
+import { DATA_SOURCE } from '../../infra/database/tokens';
 import { REDIS_CLIENT } from '../../shared/infra/redis/tokens';
 import { AUTH_SETTINGS } from './application/AuthSettings';
 import type { AuthSettings } from './application/AuthSettings';

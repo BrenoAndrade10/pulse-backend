@@ -3,7 +3,6 @@ import { DomainError } from '../../../../shared/errors/DomainError';
 import type { AccessTokenClaims } from '../../domain/types/AccessTokenClaims';
 import type { AuthenticatedRequest } from '../AuthenticatedRequest';
 
-/** Dados do access token validado pelo AccessTokenGuard. */
 export const CurrentAuth = createParamDecorator(
   (_data: unknown, context: ExecutionContext): AccessTokenClaims => {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();

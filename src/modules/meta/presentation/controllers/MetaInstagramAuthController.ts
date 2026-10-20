@@ -1,13 +1,30 @@
-import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { Environment } from '../../../../config/Environment';
+import { DomainError } from '../../../../shared/errors/DomainError';
 import { Public } from '../../../../shared/presentation/decorators/Public';
+import { isUuidV7 } from '../../../../shared/presentation/validators/isUuidV7';
 import type { AccessTokenClaims } from '../../../auth/domain/types/AccessTokenClaims';
 import { CurrentAuth } from '../../../auth/presentation/decorators/CurrentAuth';
 import {
   CompleteInstagramConnectionUseCase,
   type CompleteInstagramConnectionOutput,
 } from '../../application/use-cases/CompleteInstagramConnectionUseCase';
+import {
+  ListInstagramConnectionsUseCase,
+  type InstagramConnectionOutput,
+} from '../../application/use-cases/ListInstagramConnectionsUseCase';
+import { RevokeInstagramConnectionUseCase } from '../../application/use-cases/RevokeInstagramConnectionUseCase';
 import { StartInstagramConnectionUseCase } from '../../application/use-cases/StartInstagramConnectionUseCase';
 import { startInstagramConnectionSchema } from '../schemas/StartInstagramConnectionSchema';
 
@@ -25,7 +42,33 @@ export class MetaInstagramAuthController {
   constructor(
     private readonly startConnection: StartInstagramConnectionUseCase,
     private readonly completeConnection: CompleteInstagramConnectionUseCase,
+    private readonly listConnections: ListInstagramConnectionsUseCase,
+    private readonly revokeConnection: RevokeInstagramConnectionUseCase,
   ) {}
+
+  /** Status das conexões dos experts da empresa, lido do banco. */
+  @Get('connections')
+  connections(
+    @CurrentAuth() auth: AccessTokenClaims,
+  ): Promise<InstagramConnectionOutput[]> {
+    return this.listConnections.execute({ tenantId: auth.tenantId });
+  }
+
+  /** Desconecta o expert e apaga o token guardado. */
+  @Delete('connections/:expertId')
+  @HttpCode(204)
+  async revoke(
+    @Param('expertId') expertId: string,
+    @CurrentAuth() auth: AccessTokenClaims,
+  ): Promise<void> {
+    if (!isUuidV7(expertId)) {
+      throw DomainError.validationFailed({
+        errors: ['Informe um expertId válido.'],
+      });
+    }
+
+    await this.revokeConnection.execute({ tenantId: auth.tenantId, expertId });
+  }
 
   @Post('authorizations')
   async start(
@@ -77,7 +120,7 @@ export class MetaInstagramAuthController {
       url.searchParams.set('reason', result.reason);
     }
 
-    url.hash = 'facebook';
+    url.hash = 'instagram';
 
     return url.toString();
   }

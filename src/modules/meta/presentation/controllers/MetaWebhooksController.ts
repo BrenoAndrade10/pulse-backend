@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Headers,
+  HttpCode,
   Post,
   Query,
   Req,
@@ -47,42 +48,50 @@ export class MetaWebhooksController {
   }
 
   @Post()
+  @HttpCode(200)
   receiveWebhook(
     @Body() body: MetaWebhookPayload,
     @Req() request: RawBodyRequest,
     @Headers('x-hub-signature-256') signature?: string,
   ) {
-    this.validateSignatureIfConfigured(request, signature);
+    console.log(body);
+
+    this.validateSignature(request, signature);
 
     return this.handleMetaWebhookUseCase.execute(body);
   }
 
-  private validateSignatureIfConfigured(
-    request: RawBodyRequest,
-    signature?: string,
-  ): void {
-    const appSecret = this.metaConfigService.appSecret;
+  private validateSignature(request: RawBodyRequest, signature?: string): void {
+    const secrets = [
+      this.metaConfigService.instagramAppSecret,
+      this.metaConfigService.appSecret,
+    ].filter((secret): secret is string => Boolean(secret));
 
-    if (!appSecret) {
-      return;
+    if (secrets.length === 0) {
+      throw new DomainError(503, 'META_WEBHOOK_SECRET_NOT_CONFIGURED');
     }
 
     if (!request.rawBody || !signature?.startsWith('sha256=')) {
       throw new DomainError(403, 'META_WEBHOOK_SIGNATURE_INVALID');
     }
 
-    const expectedSignature = createHmac('sha256', appSecret)
-      .update(request.rawBody)
-      .digest('hex');
-    const receivedSignature = signature.replace('sha256=', '');
+    const receivedBuffer = Buffer.from(
+      signature.slice('sha256='.length),
+      'hex',
+    );
+    const rawBody = request.rawBody;
+    const valid = secrets.some((secret) => {
+      const expectedBuffer = createHmac('sha256', secret)
+        .update(rawBody)
+        .digest();
 
-    const expectedBuffer = Buffer.from(expectedSignature, 'hex');
-    const receivedBuffer = Buffer.from(receivedSignature, 'hex');
+      return (
+        expectedBuffer.length === receivedBuffer.length &&
+        timingSafeEqual(expectedBuffer, receivedBuffer)
+      );
+    });
 
-    if (
-      expectedBuffer.length !== receivedBuffer.length ||
-      !timingSafeEqual(expectedBuffer, receivedBuffer)
-    ) {
+    if (!valid) {
       throw new DomainError(403, 'META_WEBHOOK_SIGNATURE_INVALID');
     }
   }

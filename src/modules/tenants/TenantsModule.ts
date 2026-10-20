@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
-import { DATA_SOURCE } from '../../database/tokens';
+import { DATA_SOURCE } from '../../infra/database/tokens';
 import { TENANT_USERS_REPOSITORY } from './domain/repositories/TenantUsersRepository';
 import { TENANTS_REPOSITORY } from './domain/repositories/TenantsRepository';
 import { TenantOrmEntity } from './infra/entities/TenantOrmEntity';

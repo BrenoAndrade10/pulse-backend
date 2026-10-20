@@ -3,9 +3,13 @@ import { ID_GENERATOR } from '../../../../shared/domain/IdGenerator';
 import type { IdGenerator } from '../../../../shared/domain/IdGenerator';
 import { EXPERTS_REPOSITORY } from '../../../experts/domain/repositories/ExpertsRepository';
 import type { ExpertsRepository } from '../../../experts/domain/repositories/ExpertsRepository';
-import { ExpertMetaCredential } from '../../domain/entities/ExpertMetaCredential';
-import { EXPERT_META_CREDENTIALS_REPOSITORY } from '../../domain/repositories/ExpertMetaCredentialsRepository';
-import type { ExpertMetaCredentialsRepository } from '../../domain/repositories/ExpertMetaCredentialsRepository';
+import { IntegrationAccount } from '../../../integrations/domain/entities/IntegrationAccount';
+import { IntegrationCredential } from '../../../integrations/domain/entities/IntegrationCredential';
+import { IntegrationAccountType } from '../../../integrations/domain/enums/IntegrationAccountType';
+import { IntegrationCredentialStatus } from '../../../integrations/domain/enums/IntegrationCredentialStatus';
+import { IntegrationProvider } from '../../../integrations/domain/enums/IntegrationProvider';
+import { INTEGRATION_CREDENTIALS_REPOSITORY } from '../../../integrations/domain/repositories/IntegrationCredentialsRepository';
+import type { IntegrationCredentialsRepository } from '../../../integrations/domain/repositories/IntegrationCredentialsRepository';
 import { OAUTH_STATE_STORE } from '../../domain/repositories/OAuthStateStore';
 import type { OAuthStateStore } from '../../domain/repositories/OAuthStateStore';
 import {
@@ -13,8 +17,8 @@ import {
   InstagramOAuthError,
 } from '../../domain/services/InstagramOAuthGateway';
 import type { InstagramOAuthGateway } from '../../domain/services/InstagramOAuthGateway';
-import { META_TOKEN_CIPHER } from '../../domain/services/MetaTokenCipher';
-import type { MetaTokenCipher } from '../../domain/services/MetaTokenCipher';
+import { INTEGRATION_TOKEN_CIPHER } from '../../../integrations/domain/services/IntegrationTokenCipher';
+import type { IntegrationTokenCipher } from '../../../integrations/domain/services/IntegrationTokenCipher';
 
 export type CompleteInstagramConnectionInput = {
   state?: string;
@@ -48,11 +52,11 @@ export class CompleteInstagramConnectionUseCase {
     @Inject(EXPERTS_REPOSITORY)
     private readonly expertsRepository: ExpertsRepository,
 
-    @Inject(EXPERT_META_CREDENTIALS_REPOSITORY)
-    private readonly credentialsRepository: ExpertMetaCredentialsRepository,
+    @Inject(INTEGRATION_CREDENTIALS_REPOSITORY)
+    private readonly credentialsRepository: IntegrationCredentialsRepository,
 
-    @Inject(META_TOKEN_CIPHER)
-    private readonly cipher: MetaTokenCipher,
+    @Inject(INTEGRATION_TOKEN_CIPHER)
+    private readonly cipher: IntegrationTokenCipher,
 
     @Inject(ID_GENERATOR)
     private readonly idGenerator: IdGenerator,
@@ -97,24 +101,45 @@ export class CompleteInstagramConnectionUseCase {
       );
       const profile = await this.instagram.getProfile(longLived.accessToken);
       const now = new Date();
+      const owner = {
+        tenantId: origin.tenantId,
+        expertId: origin.expertId,
+        provider: IntegrationProvider.INSTAGRAM,
+      };
+      const credentialId = this.idGenerator.generate();
 
       await this.credentialsRepository.replaceActive(
-        new ExpertMetaCredential({
-          id: this.idGenerator.generate(),
-          tenantId: origin.tenantId,
-          expertId: origin.expertId,
-          metaUserId: shortLived.appScopedUserId,
-          instagramUserId: profile.userId,
-          instagramUsername: profile.username,
-          accessToken: this.cipher.encrypt(longLived.accessToken),
+        new IntegrationCredential({
+          ...owner,
+          id: credentialId,
+          externalUserId: shortLived.appScopedUserId,
+          accessToken: this.cipher.encrypt(longLived.accessToken, {
+            ...owner,
+            credentialId,
+            purpose: 'access_token',
+          }),
           tokenExpiresAt: new Date(
             now.getTime() + longLived.expiresInSeconds * 1000,
           ),
           scopes: shortLived.permissions,
-          isActive: true,
+          status: IntegrationCredentialStatus.ACTIVE,
           createdAt: now,
           updatedAt: now,
         }),
+        [
+          new IntegrationAccount({
+            ...owner,
+            id: this.idGenerator.generate(),
+            credentialId,
+            type: IntegrationAccountType.INSTAGRAM_ACCOUNT,
+            externalId: profile.userId,
+            displayName: profile.username,
+            metadata: {},
+            connectedAt: now,
+            createdAt: now,
+            updatedAt: now,
+          }),
+        ],
       );
 
       return {

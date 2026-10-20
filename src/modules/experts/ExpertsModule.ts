@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
-import { DATA_SOURCE } from '../../database/tokens';
+import { DATA_SOURCE } from '../../infra/database/tokens';
 import { EXPERTS_REPOSITORY } from './domain/repositories/ExpertsRepository';
 import { ExpertOrmEntity } from './infra/entities/ExpertOrmEntity';
 import { TypeOrmExpertsRepository } from './infra/repositories/TypeOrmExpertsRepository';

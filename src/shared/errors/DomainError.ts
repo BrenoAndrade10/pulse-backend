@@ -21,6 +21,10 @@ export class DomainError extends AppError {
     return new DomainError(404, 'EXPERT_NOT_FOUND');
   }
 
+  static launchNotFound(): DomainError {
+    return new DomainError(404, 'LAUNCH_NOT_FOUND');
+  }
+
   static forbidden(): DomainError {
     return new DomainError(403, 'FORBIDDEN');
   }

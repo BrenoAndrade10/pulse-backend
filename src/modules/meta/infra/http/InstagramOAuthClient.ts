@@ -18,11 +18,6 @@ type ShortLivedTokenResponse = {
   permissions?: string | string[];
 };
 
-/**
- * Cliente do "Login da empresa no Instagram" (Instagram API with Instagram
- * Login). Referência: developers.facebook.com/docs/instagram-platform/
- * instagram-api-with-instagram-login/business-login
- */
 export class InstagramOAuthClient implements InstagramOAuthGateway {
   isConfigured(): boolean {
     const { INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET, INSTAGRAM_REDIRECT_URI } =
@@ -51,7 +46,6 @@ export class InstagramOAuthClient implements InstagramOAuthGateway {
     form.set('client_id', this.config.appId);
     form.set('client_secret', this.config.appSecret);
     form.set('grant_type', 'authorization_code');
-    // Precisa ser idêntica à usada na autorização.
     form.set('redirect_uri', this.config.redirectUri);
     form.set('code', code);
 
@@ -59,7 +53,6 @@ export class InstagramOAuthClient implements InstagramOAuthGateway {
       ShortLivedTokenResponse & { data?: ShortLivedTokenResponse[] }
     >(TOKEN_URL, { method: 'POST', body: form });
 
-    // A documentação atual devolve { data: [ {...} ] }; versões antigas, o objeto direto.
     const token: ShortLivedTokenResponse | undefined = payload.data
       ? payload.data[0]
       : payload;
@@ -155,7 +148,6 @@ export class InstagramOAuthClient implements InstagramOAuthGateway {
     const payload: unknown = await response.json().catch(() => null);
 
     if (!response.ok) {
-      // Só a mensagem de erro da Meta: a URL tem tokens e segredos.
       throw new InstagramOAuthError(
         `Meta respondeu ${response.status}: ${this.extractErrorMessage(payload)}`,
       );

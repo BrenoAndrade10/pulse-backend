@@ -29,6 +29,12 @@ export class MetaConfigService {
     return Environment.vars.META_APP_SECRET;
   }
 
+  get instagramAppSecret(): string | undefined {
+    Environment.assertInitialized();
+
+    return Environment.vars.INSTAGRAM_APP_SECRET;
+  }
+
   get webhookVerifyToken(): string | undefined {
     Environment.assertInitialized();
 

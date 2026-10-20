@@ -7,8 +7,8 @@ import { OAUTH_STATE_STORE } from '../../domain/repositories/OAuthStateStore';
 import type { OAuthStateStore } from '../../domain/repositories/OAuthStateStore';
 import { INSTAGRAM_OAUTH_GATEWAY } from '../../domain/services/InstagramOAuthGateway';
 import type { InstagramOAuthGateway } from '../../domain/services/InstagramOAuthGateway';
-import { META_TOKEN_CIPHER } from '../../domain/services/MetaTokenCipher';
-import type { MetaTokenCipher } from '../../domain/services/MetaTokenCipher';
+import { INTEGRATION_TOKEN_CIPHER } from '../../../integrations/domain/services/IntegrationTokenCipher';
+import type { IntegrationTokenCipher } from '../../../integrations/domain/services/IntegrationTokenCipher';
 
 /** Tempo para o usuário concluir o login no Instagram. */
 export const OAUTH_STATE_TTL_SECONDS = 600;
@@ -31,8 +31,8 @@ export class StartInstagramConnectionUseCase {
     @Inject(INSTAGRAM_OAUTH_GATEWAY)
     private readonly instagram: InstagramOAuthGateway,
 
-    @Inject(META_TOKEN_CIPHER)
-    private readonly cipher: MetaTokenCipher,
+    @Inject(INTEGRATION_TOKEN_CIPHER)
+    private readonly cipher: IntegrationTokenCipher,
   ) {}
 
   async execute(
