@@ -12,6 +12,7 @@ export class Environment {
     POSTGRES_URL: yup.string().optional(),
 
     META_WEBHOOK_VERIFY_TOKEN: yup.string().optional(),
+    META_APP_ID: yup.string().optional(),
     META_APP_SECRET: yup.string().optional(),
     META_ACCESS_TOKEN: yup.string().optional(),
     META_INSTAGRAM_USER_ID: yup.string().optional(),
@@ -37,6 +38,8 @@ export class Environment {
     INSTAGRAM_GRAPH_API_VERSION: yup.string().optional().default('v25.0'),
 
     FRONTEND_URL: yup.string().optional().default('http://localhost:5173'),
+    RESEND_API_KEY: yup.string().optional(),
+    EMAIL_FROM: yup.string().optional(),
 
     TRACKING_SCRIPT_URL: yup
       .string()
@@ -53,10 +56,9 @@ export class Environment {
           }
         },
       ),
-    // Só em desenvolvimento: aceita páginas em http://localhost para testar o editor.
+
     TRACKING_ALLOW_LOCAL_PAGES: yup.boolean().default(false),
 
-    // Cifra os dados pessoais dos leads (32 bytes em base64 ou hex).
     LEADS_ENCRYPTION_KEY: yup
       .string()
       .optional()
@@ -66,7 +68,15 @@ export class Environment {
         (value) => !value || parseAes256Key(value) !== null,
       ),
 
-    // ClickHouse Cloud (eventos do pixel). Sem eles, os eventos não são guardados.
+    TWO_FACTOR_ENCRYPTION_KEY: yup
+      .string()
+      .optional()
+      .test(
+        'aes-256-key',
+        'TWO_FACTOR_ENCRYPTION_KEY deve ter 32 bytes em base64 (44 caracteres) ou hex (64 caracteres). Gere com: openssl rand -base64 32',
+        (value) => !value || parseAes256Key(value) !== null,
+      ),
+
     CLICKHOUSE_URL: yup.string().optional(),
     CLICKHOUSE_USERNAME: yup.string().optional(),
     CLICKHOUSE_PASSWORD: yup.string().optional(),

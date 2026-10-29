@@ -90,4 +90,38 @@ describe('MetaWebhooksController', () => {
     );
     expect(handleWebhook.execute).not.toHaveBeenCalled();
   });
+
+  it('accepts WhatsApp payloads only with the Meta app secret', async () => {
+    const whatsappPayload = {
+      object: 'whatsapp_business_account',
+      entry: [],
+    };
+    const whatsappRawBody = Buffer.from(JSON.stringify(whatsappPayload));
+    const whatsappRequest = { rawBody: whatsappRawBody } as Request & {
+      rawBody: Buffer;
+    };
+    const whatsappSign = (secret: string) =>
+      `sha256=${createHmac('sha256', secret).update(whatsappRawBody).digest('hex')}`;
+    Environment.vars.INSTAGRAM_APP_SECRET = 'instagram-secret';
+    Environment.vars.META_APP_SECRET = 'meta-secret';
+
+    expect(() =>
+      controller.receiveWebhook(
+        whatsappPayload,
+        whatsappRequest,
+        whatsappSign('instagram-secret'),
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        reason: 'META_WEBHOOK_SIGNATURE_INVALID',
+      }) as Error,
+    );
+    await expect(
+      controller.receiveWebhook(
+        whatsappPayload,
+        whatsappRequest,
+        whatsappSign('meta-secret'),
+      ),
+    ).resolves.toEqual({ received: true, entries: 1 });
+  });
 });

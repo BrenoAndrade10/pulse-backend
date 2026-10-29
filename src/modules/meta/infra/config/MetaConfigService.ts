@@ -11,10 +11,20 @@ export class MetaConfigService {
     return `https://graph.facebook.com/${version}`;
   }
 
+  get whatsappGraphApiBaseUrl(): string {
+    return 'https://graph.facebook.com/v25.0';
+  }
+
   get accessToken(): string | undefined {
     Environment.assertInitialized();
 
     return Environment.vars.META_ACCESS_TOKEN;
+  }
+
+  get appId(): string | undefined {
+    Environment.assertInitialized();
+
+    return Environment.vars.META_APP_ID;
   }
 
   get instagramUserId(): string | undefined {

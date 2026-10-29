@@ -7,7 +7,10 @@ import { ExpertsModule } from '../experts/ExpertsModule';
 import { IntegrationsModule } from '../integrations/IntegrationsModule';
 import { InstagramAccessTokens } from './application/services/InstagramAccessTokens';
 import { CompleteInstagramConnectionUseCase } from './application/use-cases/CompleteInstagramConnectionUseCase';
+import { ConnectWhatsAppUseCase } from './application/use-cases/ConnectWhatsAppUseCase';
 import { DeleteCommentAutomationUseCase } from './application/use-cases/DeleteCommentAutomationUseCase';
+import { DisconnectWhatsAppUseCase } from './application/use-cases/DisconnectWhatsAppUseCase';
+import { GetWhatsAppConnectionUseCase } from './application/use-cases/GetWhatsAppConnectionUseCase';
 import { HandleInstagramCommentUseCase } from './application/use-cases/HandleInstagramCommentUseCase';
 import { HandleMetaWebhookUseCase } from './application/use-cases/HandleMetaWebhookUseCase';
 import { ListCommentAutomationsUseCase } from './application/use-cases/ListCommentAutomationsUseCase';
@@ -27,6 +30,8 @@ import { CommentReplyOrmEntity } from './infra/entities/CommentReplyOrmEntity';
 import { MetaConfigService } from './infra/config/MetaConfigService';
 import { InstagramGraphClient } from './infra/http/InstagramGraphClient';
 import { InstagramOAuthClient } from './infra/http/InstagramOAuthClient';
+import { WhatsAppGraphClient } from './infra/http/WhatsAppGraphClient';
+import { WhatsAppConnectionSecurity } from './infra/security/WhatsAppConnectionSecurity';
 import { InstagramMediaUrls } from './infra/media/InstagramMediaUrls';
 import { MetaGraphClient } from './infra/http/MetaGraphClient';
 import { RedisOAuthStateStore } from './infra/oauth/RedisOAuthStateStore';
@@ -37,6 +42,7 @@ import { MetaMediaProxyController } from './presentation/controllers/MetaMediaPr
 import { MetaInstagramAuthController } from './presentation/controllers/MetaInstagramAuthController';
 import { MetaReelsController } from './presentation/controllers/MetaReelsController';
 import { MetaWebhooksController } from './presentation/controllers/MetaWebhooksController';
+import { WhatsAppConnectionController } from './presentation/controllers/WhatsAppConnectionController';
 
 @Module({
   imports: [ExpertsModule, IntegrationsModule],
@@ -46,6 +52,7 @@ import { MetaWebhooksController } from './presentation/controllers/MetaWebhooksC
     MetaInstagramAuthController,
     InstagramCommentAutomationsController,
     MetaMediaProxyController,
+    WhatsAppConnectionController,
   ],
   providers: [
     MetaConfigService,
@@ -63,6 +70,11 @@ import { MetaWebhooksController } from './presentation/controllers/MetaWebhooksC
     RevokeInstagramConnectionUseCase,
     StartInstagramConnectionUseCase,
     CompleteInstagramConnectionUseCase,
+    WhatsAppGraphClient,
+    ConnectWhatsAppUseCase,
+    GetWhatsAppConnectionUseCase,
+    DisconnectWhatsAppUseCase,
+    WhatsAppConnectionSecurity,
     {
       provide: INSTAGRAM_OAUTH_GATEWAY,
       useClass: InstagramOAuthClient,

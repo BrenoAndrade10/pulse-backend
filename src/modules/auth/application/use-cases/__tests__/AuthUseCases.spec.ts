@@ -10,7 +10,9 @@ import { InMemoryAuthAccountsRepository } from '../../../infra/repositories/InMe
 import { InMemorySessionsRepository } from '../../../infra/repositories/InMemorySessionsRepository';
 import { JwtAccessTokenService } from '../../../infra/tokens/JwtAccessTokenService';
 import type { AuthSettings } from '../../AuthSettings';
+import type { AuthResult } from '../../AuthProfile';
 import { RefreshTokenCodec } from '../../services/RefreshTokenCodec';
+import { SessionIssuer } from '../../services/SessionIssuer';
 import { LoginUseCase } from '../LoginUseCase';
 import { LogoutUseCase } from '../LogoutUseCase';
 import { RefreshSessionUseCase } from '../RefreshSessionUseCase';
@@ -54,6 +56,16 @@ describe('Auth use cases', () => {
   let refreshSessionUseCase: RefreshSessionUseCase;
   let logoutUseCase: LogoutUseCase;
   let user: User;
+  const twoFactor = { findByUserId: jest.fn() };
+  const trustedDevices = { validate: jest.fn() };
+  const challenges = { create: jest.fn() };
+  const emailCodes = {
+    generate: jest.fn(),
+    hash: jest.fn(),
+    maskEmail: jest.fn(),
+  };
+  const emailTemplates = { render: jest.fn() };
+  const emailSender = { send: jest.fn() };
 
   beforeAll(async () => {
     const now = new Date();
@@ -70,6 +82,7 @@ describe('Auth use cases', () => {
   });
 
   beforeEach(() => {
+    jest.clearAllMocks();
     accountsRepository = new InMemoryAuthAccountsRepository();
     accountsRepository.users.push(user);
     accountsRepository.memberships.set(user.id, [
@@ -77,14 +90,38 @@ describe('Auth use cases', () => {
     ]);
     sessionsRepository = new InMemorySessionsRepository();
     accessTokenService = buildAccessTokenService();
+    twoFactor.findByUserId.mockResolvedValue({ confirmedAt: new Date() });
+    trustedDevices.validate.mockResolvedValue(true);
+    challenges.create.mockResolvedValue({
+      challengeToken: 'challenge-token',
+      expiresAt: '2026-10-21T20:05:00.000Z',
+    });
+    emailCodes.generate.mockReturnValue('123456');
+    emailCodes.hash.mockReturnValue('email-code-hash');
+    emailCodes.maskEmail.mockReturnValue('b****@e****.com');
+    emailTemplates.render.mockReturnValue({
+      html: '<p>123456</p>',
+      text: '123456',
+    });
+    emailSender.send.mockResolvedValue(undefined);
 
-    loginUseCase = new LoginUseCase(
+    const sessionIssuer = new SessionIssuer(
       accountsRepository,
       sessionsRepository,
       accessTokenService,
-      passwordHasher,
       idGenerator,
       settings,
+    );
+    loginUseCase = new LoginUseCase(
+      accountsRepository,
+      passwordHasher,
+      twoFactor as never,
+      trustedDevices as never,
+      challenges as never,
+      sessionIssuer,
+      emailCodes as never,
+      emailTemplates as never,
+      emailSender,
     );
     refreshSessionUseCase = new RefreshSessionUseCase(
       accountsRepository,
@@ -102,7 +139,8 @@ describe('Auth use cases', () => {
       rememberMe: true,
       ip: '127.0.0.1',
       userAgent: 'jest',
-    });
+      trustedDeviceToken: 'trusted',
+    }) as Promise<AuthResult>;
 
   const expectDomainError = async (
     promise: Promise<unknown>,
@@ -138,7 +176,86 @@ describe('Auth use cases', () => {
   };
 
   describe('LoginUseCase', () => {
-    it('creates a session and returns tokens for the oldest tenant', async () => {
+    it('sends an email challenge when TOTP is not confirmed', async () => {
+      twoFactor.findByUserId.mockResolvedValue(null);
+      trustedDevices.validate.mockResolvedValue(false);
+
+      await expect(
+        loginUseCase.execute({
+          email: user.email,
+          password: 'secret123',
+          rememberMe: true,
+          ip: '127.0.0.1',
+          userAgent: 'jest',
+          trustedDeviceToken: null,
+        }),
+      ).resolves.toMatchObject({
+        status: 'two_factor_required',
+        next: 'email',
+        challengeToken: 'challenge-token',
+        emailHint: 'b****@e****.com',
+      });
+      expect(emailSender.send).toHaveBeenCalledWith(
+        expect.objectContaining({ to: user.email }),
+      );
+      expect(challenges.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          next: 'email',
+          emailCodeHash: 'email-code-hash',
+          emailResendCount: 0,
+        }),
+      );
+      expect(sessionsRepository.sessions.size).toBe(0);
+    });
+
+    it('requires TOTP without a valid trusted device when enabled', async () => {
+      trustedDevices.validate.mockResolvedValue(false);
+
+      await expect(
+        loginUseCase.execute({
+          email: user.email,
+          password: 'secret123',
+          rememberMe: false,
+          ip: '127.0.0.1',
+          userAgent: 'jest',
+          trustedDeviceToken: 'another-user-device',
+        }),
+      ).resolves.toMatchObject({
+        status: 'two_factor_required',
+        next: 'totp',
+      });
+      expect(trustedDevices.validate).toHaveBeenCalledWith(
+        user.id,
+        'another-user-device',
+      );
+      expect(sessionsRepository.sessions.size).toBe(0);
+    });
+
+    it('fails with 503 and discards the challenge when email sending fails', async () => {
+      twoFactor.findByUserId.mockResolvedValue(null);
+      trustedDevices.validate.mockResolvedValue(false);
+      emailSender.send.mockRejectedValue(new Error('provider unavailable'));
+      const discard = jest.fn().mockResolvedValue(undefined);
+      Object.assign(challenges, { discard });
+
+      await expect(
+        loginUseCase.execute({
+          email: user.email,
+          password: 'secret123',
+          rememberMe: false,
+          ip: '127.0.0.1',
+          userAgent: 'Chrome/100',
+          trustedDeviceToken: null,
+        }),
+      ).rejects.toMatchObject({
+        statusCode: 503,
+        reason: 'EMAIL_SEND_FAILED',
+      });
+      expect(discard).toHaveBeenCalledWith('challenge-token');
+    });
+
+    it('creates a session directly with a trusted device even without TOTP', async () => {
+      twoFactor.findByUserId.mockResolvedValue(null);
       const result = await login();
       const claims = await accessTokenService.verify(result.accessToken);
       const parsed = RefreshTokenCodec.parse(result.refreshToken)!;
@@ -156,6 +273,7 @@ describe('Auth use cases', () => {
       );
       expect(session.refreshTokenHash).not.toContain(parsed.secret);
       expect(accountsRepository.lastLogins.get(user.id)).toBeInstanceOf(Date);
+      expect(emailSender.send).not.toHaveBeenCalled();
     });
 
     it.each([

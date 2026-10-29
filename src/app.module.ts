@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './infra/database/DatabaseModule';
@@ -10,10 +10,12 @@ import { LeadsModule } from './modules/leads/LeadsModule';
 import { MetaModule } from './modules/meta/MetaModule';
 import { TenantsModule } from './modules/tenants/TenantsModule';
 import { TrackingModule } from './modules/tracking/TrackingModule';
+import { TwoFactorModule } from './modules/two-factor/TwoFactorModule';
 import { UsersModule } from './modules/users/UsersModule';
 import { DomainErrorFilter } from './shared/filters/DomainErrorFilter';
 import { RedisModule } from './shared/infra/redis/RedisModule';
 import { SharedModule } from './shared/SharedModule';
+import { RateLimitInterceptor } from './shared/presentation/interceptors/RateLimitInterceptor';
 
 @Module({
   imports: [
@@ -28,6 +30,7 @@ import { SharedModule } from './shared/SharedModule';
     MetaModule,
     TrackingModule,
     LeadsModule,
+    TwoFactorModule,
   ],
   controllers: [AppController],
   providers: [
@@ -35,6 +38,10 @@ import { SharedModule } from './shared/SharedModule';
     {
       provide: APP_FILTER,
       useClass: DomainErrorFilter,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: RateLimitInterceptor,
     },
   ],
 })

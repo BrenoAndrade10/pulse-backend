@@ -43,6 +43,20 @@ export class HandleMetaWebhookUseCase {
       });
     }
 
+    if (payload?.object === 'whatsapp_business_account') {
+      entries.forEach((entry) => {
+        (entry.changes ?? []).forEach((change) => {
+          if (change.field !== 'messages') return;
+          if (Array.isArray(change.value?.messages)) {
+            this.logger.debug('Webhook WhatsApp recebido: messages');
+          }
+          if (Array.isArray(change.value?.statuses)) {
+            this.logger.debug('Webhook WhatsApp recebido: statuses');
+          }
+        });
+      });
+    }
+
     return { received: true, entries: entries.length };
   }
 }

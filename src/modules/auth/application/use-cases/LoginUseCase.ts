@@ -1,24 +1,21 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { randomBytes } from 'node:crypto';
-import { ID_GENERATOR } from '../../../../shared/domain/IdGenerator';
-import type { IdGenerator } from '../../../../shared/domain/IdGenerator';
 import { PASSWORD_HASHER } from '../../../../shared/domain/PasswordHasher';
 import type { PasswordHasher } from '../../../../shared/domain/PasswordHasher';
+import { EMAIL_SENDER } from '../../../../shared/domain/EmailSender';
+import type { EmailSender } from '../../../../shared/domain/EmailSender';
 import { DomainError } from '../../../../shared/errors/DomainError';
 import { UserStatus } from '../../../users/domain/enums/UserStatus';
-import { Session } from '../../domain/entities/Session';
+import { TrustedDevicesService } from '../../../two-factor/application/services/TrustedDevicesService';
+import { TWO_FACTOR_REPOSITORY } from '../../../two-factor/domain/repositories/TwoFactorRepository';
+import type { TwoFactorRepository } from '../../../two-factor/domain/repositories/TwoFactorRepository';
+import { AuthChallengeStore } from '../../../two-factor/infra/redis/AuthChallengeStore';
 import { AUTH_ACCOUNTS_REPOSITORY } from '../../domain/repositories/AuthAccountsRepository';
 import type { AuthAccountsRepository } from '../../domain/repositories/AuthAccountsRepository';
-import { SESSIONS_REPOSITORY } from '../../domain/repositories/SessionsRepository';
-import type { SessionsRepository } from '../../domain/repositories/SessionsRepository';
-import { ACCESS_TOKEN_SERVICE } from '../../domain/services/AccessTokenService';
-import type { AccessTokenService } from '../../domain/services/AccessTokenService';
 import type { AuthMembership } from '../../domain/types/AuthMembership';
-import { AUTH_SETTINGS } from '../AuthSettings';
-import type { AuthSettings } from '../AuthSettings';
-import { buildAuthProfile } from '../AuthProfile';
 import type { AuthResult } from '../AuthProfile';
-import { RefreshTokenCodec } from '../services/RefreshTokenCodec';
+import { SessionIssuer } from '../services/SessionIssuer';
+import { EmailLoginCodes } from '../services/EmailLoginCodes';
+import { EmailTemplateRenderer } from '../services/EmailTemplateRenderer';
 
 export type LoginUseCaseInput = {
   email: string;
@@ -27,37 +24,46 @@ export type LoginUseCaseInput = {
   rememberMe: boolean;
   ip: string | null;
   userAgent: string | null;
+  trustedDeviceToken?: string | null;
+};
+
+export type LoginChallengeResult = {
+  status: 'two_factor_required';
+  next: 'email' | 'totp';
+  challengeToken: string;
+  expiresAt: string;
+  emailHint?: string;
 };
 
 @Injectable()
 export class LoginUseCase {
-  private dummyPasswordHash?: Promise<string>;
+  private static readonly DUMMY_PASSWORD_HASH =
+    '$argon2id$v=19$m=65536,p=4,t=3$Wt5NxPbPVlIN0P/3/1qCIw$DhIBkm97I5t4eHx77lhBDoeqRziz+WwvUqmDR2QasPo';
 
   constructor(
     @Inject(AUTH_ACCOUNTS_REPOSITORY)
     private readonly accountsRepository: AuthAccountsRepository,
 
-    @Inject(SESSIONS_REPOSITORY)
-    private readonly sessionsRepository: SessionsRepository,
-
-    @Inject(ACCESS_TOKEN_SERVICE)
-    private readonly accessTokenService: AccessTokenService,
-
     @Inject(PASSWORD_HASHER)
     private readonly passwordHasher: PasswordHasher,
-
-    @Inject(ID_GENERATOR)
-    private readonly idGenerator: IdGenerator,
-
-    @Inject(AUTH_SETTINGS)
-    private readonly settings: AuthSettings,
+    @Inject(TWO_FACTOR_REPOSITORY)
+    private readonly twoFactor: TwoFactorRepository,
+    private readonly trustedDevices: TrustedDevicesService,
+    private readonly challenges: AuthChallengeStore,
+    private readonly sessionIssuer: SessionIssuer,
+    private readonly emailCodes: EmailLoginCodes,
+    private readonly emailTemplates: EmailTemplateRenderer,
+    @Inject(EMAIL_SENDER)
+    private readonly emailSender: EmailSender,
   ) {}
 
-  async execute(input: LoginUseCaseInput): Promise<AuthResult> {
+  async execute(
+    input: LoginUseCaseInput,
+  ): Promise<AuthResult | LoginChallengeResult> {
     const user = await this.accountsRepository.findUserByEmail(input.email);
 
     const passwordMatches = await this.passwordHasher.verify(
-      user?.passwordHash ?? (await this.getDummyPasswordHash()),
+      user?.passwordHash ?? LoginUseCase.DUMMY_PASSWORD_HASH,
       input.password,
     );
 
@@ -73,48 +79,58 @@ export class LoginUseCase {
       input.tenantId,
     );
 
-    const now = new Date();
-    const sessionId = this.idGenerator.generate();
-    const refreshToken = RefreshTokenCodec.generate(sessionId);
-    const session = new Session({
-      id: sessionId,
+    if (
+      await this.trustedDevices.validate(
+        user.id,
+        input.trustedDeviceToken ?? null,
+      )
+    ) {
+      return this.sessionIssuer.issue({
+        userId: user.id,
+        tenantId: activeMembership?.tenantId ?? null,
+        rememberMe: input.rememberMe,
+        ip: input.ip,
+        userAgent: input.userAgent,
+      });
+    }
+
+    const state = await this.twoFactor.findByUserId(user.id);
+    if (state?.confirmedAt) {
+      const challenge = await this.challenges.create({
+        userId: user.id,
+        tenantId: activeMembership?.tenantId ?? null,
+        remember: input.rememberMe,
+        next: 'totp',
+      });
+
+      return { status: 'two_factor_required', next: 'totp', ...challenge };
+    }
+
+    const code = this.emailCodes.generate();
+    const challenge = await this.challenges.create({
       userId: user.id,
       tenantId: activeMembership?.tenantId ?? null,
-      refreshTokenHash: refreshToken.hash,
-      previousRefreshTokenHash: null,
-      rotatedAt: null,
-      ip: input.ip,
-      userAgent: input.userAgent,
-      rememberMe: input.rememberMe,
-      createdAt: now,
-      expiresAt: new Date(
-        now.getTime() + this.settings.sessionAbsoluteTtlSeconds * 1000,
-      ),
+      remember: input.rememberMe,
+      next: 'email',
+      emailCodeHash: this.emailCodes.hash(user.id, code),
+      emailLastSentAt: Date.now(),
+      emailResendCount: 0,
     });
 
-    await this.sessionsRepository.create(
-      session,
-      session.remainingTtlSeconds(
-        now,
-        this.settings.refreshTokenIdleTtlSeconds,
-      ),
-    );
-    await this.accountsRepository.updateLastLoginAt(user.id, now);
-
-    const accessToken = await this.accessTokenService.sign({
-      userId: user.id,
-      sessionId,
-      tenantId: activeMembership?.tenantId ?? null,
-      role: activeMembership?.role ?? null,
-    });
+    try {
+      await this.sendLoginCode(user.email, code, input.userAgent, input.ip);
+    } catch {
+      await this.challenges
+        .discard(challenge.challengeToken)
+        .catch(() => undefined);
+      throw new DomainError(503, 'EMAIL_SEND_FAILED');
+    }
 
     return {
-      accessToken,
-      accessTokenExpiresIn: this.settings.accessTokenTtlSeconds,
-      refreshToken: refreshToken.token,
-      refreshTokenExpiresAt: session.expiresAt,
-      rememberMe: session.rememberMe,
-      profile: buildAuthProfile(user, memberships, session.tenantId),
+      status: 'two_factor_required',
+      next: 'email',
+      emailHint: this.emailCodes.maskEmail(user.email),
+      ...challenge,
     };
   }
 
@@ -137,11 +153,41 @@ export class LoginUseCase {
     return membership;
   }
 
-  private getDummyPasswordHash(): Promise<string> {
-    this.dummyPasswordHash ??= this.passwordHasher.hash(
-      randomBytes(32).toString('hex'),
-    );
+  private sendLoginCode(
+    email: string,
+    code: string,
+    userAgent: string | null,
+    ip: string | null,
+  ): Promise<void> {
+    const rendered = this.emailTemplates.render('login-code', {
+      title: 'Seu código de acesso',
+      code,
+      validMinutes: 10,
+      context: `${this.browser(userAgent)} · ${this.approximateIp(ip)}`,
+    });
 
-    return this.dummyPasswordHash;
+    return this.emailSender.send({
+      to: email,
+      subject: 'Seu código de acesso — Pulse Lead',
+      ...rendered,
+    });
+  }
+
+  private browser(userAgent: string | null): string {
+    const value = userAgent ?? '';
+    if (/Edg\//.test(value)) return 'Edge';
+    if (/Firefox\//.test(value)) return 'Firefox';
+    if (/Chrome\//.test(value)) return 'Chrome';
+    if (/Safari\//.test(value)) return 'Safari';
+    return 'Navegador desconhecido';
+  }
+
+  private approximateIp(ip: string | null): string {
+    if (!ip) return 'IP desconhecido';
+    if (ip.includes(':')) return `${ip.split(':').slice(0, 3).join(':')}:…`;
+    const parts = ip.split('.');
+    return parts.length === 4
+      ? `${parts.slice(0, 3).join('.')}.x`
+      : 'IP desconhecido';
   }
 }

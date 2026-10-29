@@ -27,3 +27,10 @@ export interface IntegrationAccountsRepository {
     externalId: string,
   ): Promise<IntegrationAccount[]>;
 }
+
+export interface WhatsAppIntegrationAccountsRepository extends IntegrationAccountsRepository {
+  existsConnectedWhatsAppWaba(
+    wabaId: string,
+    excludeExpertId?: string,
+  ): Promise<boolean>;
+}

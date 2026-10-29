@@ -54,18 +54,24 @@ export class MetaWebhooksController {
     @Req() request: RawBodyRequest,
     @Headers('x-hub-signature-256') signature?: string,
   ) {
-    console.log(body);
-
-    this.validateSignature(request, signature);
+    this.validateSignature(request, signature, body?.object);
 
     return this.handleMetaWebhookUseCase.execute(body);
   }
 
-  private validateSignature(request: RawBodyRequest, signature?: string): void {
-    const secrets = [
-      this.metaConfigService.instagramAppSecret,
-      this.metaConfigService.appSecret,
-    ].filter((secret): secret is string => Boolean(secret));
+  private validateSignature(
+    request: RawBodyRequest,
+    signature?: string,
+    object?: string,
+  ): void {
+    const secrets = (
+      object === 'whatsapp_business_account'
+        ? [this.metaConfigService.appSecret]
+        : [
+            this.metaConfigService.instagramAppSecret,
+            this.metaConfigService.appSecret,
+          ]
+    ).filter((secret): secret is string => Boolean(secret));
 
     if (secrets.length === 0) {
       throw new DomainError(503, 'META_WEBHOOK_SECRET_NOT_CONFIGURED');

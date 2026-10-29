@@ -1,6 +1,7 @@
 import * as yup from 'yup';
 import { isUuidV7 } from '../../../../shared/presentation/validators/isUuidV7';
 import { UserRole } from '../../domain/enums/UserRole';
+import { passwordSchema } from './PasswordSchema';
 
 export const registerTenantUserSchema = yup
   .object({
@@ -12,10 +13,7 @@ export const registerTenantUserSchema = yup
       .lowercase()
       .email('Informe um e-mail válido.')
       .required('O e-mail é obrigatório.'),
-    password: yup
-      .string()
-      .required('A senha é obrigatória.')
-      .min(6, 'A senha deve conter pelo menos 6 caracteres.'),
+    password: passwordSchema,
     tenantId: yup
       .string()
       .trim()

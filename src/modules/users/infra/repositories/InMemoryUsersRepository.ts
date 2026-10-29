@@ -17,4 +17,10 @@ export class InMemoryUsersRepository implements UsersRepository {
 
     return Promise.resolve(user ?? null);
   }
+
+  findById(userId: string): Promise<User | null> {
+    return Promise.resolve(
+      this.users.find((user) => user.id === userId) ?? null,
+    );
+  }
 }

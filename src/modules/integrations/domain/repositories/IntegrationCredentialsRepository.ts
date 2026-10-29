@@ -37,3 +37,11 @@ export interface IntegrationCredentialsRepository {
     provider: IntegrationProvider,
   ): Promise<IntegrationCredential[]>;
 }
+
+export interface DeletableIntegrationCredentialsRepository extends IntegrationCredentialsRepository {
+  deleteActive(
+    tenantId: string,
+    expertId: string,
+    provider: IntegrationProvider,
+  ): Promise<boolean>;
+}

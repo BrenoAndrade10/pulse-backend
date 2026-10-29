@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { IsNull, type Repository } from 'typeorm';
 import type { IntegrationAccount } from '../../domain/entities/IntegrationAccount';
-import type { IntegrationAccountType } from '../../domain/enums/IntegrationAccountType';
-import type { IntegrationProvider } from '../../domain/enums/IntegrationProvider';
-import type { IntegrationAccountsRepository } from '../../domain/repositories/IntegrationAccountsRepository';
+import { IntegrationAccountType } from '../../domain/enums/IntegrationAccountType';
+import { IntegrationProvider } from '../../domain/enums/IntegrationProvider';
+import type { WhatsAppIntegrationAccountsRepository } from '../../domain/repositories/IntegrationAccountsRepository';
 import { IntegrationAccountOrmEntity } from '../entities/IntegrationAccountOrmEntity';
 import { IntegrationAccountMapper } from '../mappers/IntegrationAccountMapper';
 
 @Injectable()
-export class TypeOrmIntegrationAccountsRepository implements IntegrationAccountsRepository {
+export class TypeOrmIntegrationAccountsRepository implements WhatsAppIntegrationAccountsRepository {
   constructor(
     private readonly repository: Repository<IntegrationAccountOrmEntity>,
   ) {}
@@ -52,5 +52,29 @@ export class TypeOrmIntegrationAccountsRepository implements IntegrationAccounts
     return accounts.map((account) =>
       IntegrationAccountMapper.toDomain(account),
     );
+  }
+
+  async existsConnectedWhatsAppWaba(
+    wabaId: string,
+    excludeExpertId?: string,
+  ): Promise<boolean> {
+    const query = this.repository
+      .createQueryBuilder('account')
+      .where('account.provider = :provider', {
+        provider: IntegrationProvider.WHATSAPP,
+      })
+      .andWhere('account.type = :type', {
+        type: IntegrationAccountType.PHONE_NUMBER,
+      })
+      .andWhere('account.disconnectedAt IS NULL')
+      .andWhere("account.metadata ->> 'wabaId' = :wabaId", { wabaId });
+
+    if (excludeExpertId) {
+      query.andWhere('account.expertId != :excludeExpertId', {
+        excludeExpertId,
+      });
+    }
+
+    return query.getExists();
   }
 }

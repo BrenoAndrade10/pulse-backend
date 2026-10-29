@@ -1,10 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { In, IsNull, type EntityManager, type Repository } from 'typeorm';
+import {
+  In,
+  IsNull,
+  QueryFailedError,
+  type EntityManager,
+  type Repository,
+} from 'typeorm';
+import { DomainError } from '../../../../shared/errors/DomainError';
 import type { IntegrationAccount } from '../../domain/entities/IntegrationAccount';
 import type { IntegrationCredential } from '../../domain/entities/IntegrationCredential';
 import { IntegrationCredentialStatus } from '../../domain/enums/IntegrationCredentialStatus';
 import type { IntegrationProvider } from '../../domain/enums/IntegrationProvider';
-import type { IntegrationCredentialsRepository } from '../../domain/repositories/IntegrationCredentialsRepository';
+import type { DeletableIntegrationCredentialsRepository } from '../../domain/repositories/IntegrationCredentialsRepository';
 import { IntegrationAccountOrmEntity } from '../entities/IntegrationAccountOrmEntity';
 import { IntegrationCredentialOrmEntity } from '../entities/IntegrationCredentialOrmEntity';
 import { IntegrationAccountMapper } from '../mappers/IntegrationAccountMapper';
@@ -32,7 +39,7 @@ const revocation = (
 });
 
 @Injectable()
-export class TypeOrmIntegrationCredentialsRepository implements IntegrationCredentialsRepository {
+export class TypeOrmIntegrationCredentialsRepository implements DeletableIntegrationCredentialsRepository {
   constructor(
     private readonly repository: Repository<IntegrationCredentialOrmEntity>,
   ) {}
@@ -41,25 +48,38 @@ export class TypeOrmIntegrationCredentialsRepository implements IntegrationCrede
     credential: IntegrationCredential,
     accounts: IntegrationAccount[],
   ): Promise<void> {
-    await this.repository.manager.transaction(async (manager) => {
-      await this.revokeIn(
-        manager,
-        credential.tenantId,
-        credential.expertId,
-        credential.provider,
-        credential.createdAt,
-      );
-      await manager
-        .getRepository(IntegrationCredentialOrmEntity)
-        .insert(IntegrationCredentialMapper.toPersistence(credential));
-
-      if (accounts.length > 0) {
-        // `save` em vez de `insert`: o tipo do insert não aceita jsonb genérico.
+    try {
+      await this.repository.manager.transaction(async (manager) => {
+        await this.revokeIn(
+          manager,
+          credential.tenantId,
+          credential.expertId,
+          credential.provider,
+          credential.createdAt,
+        );
         await manager
-          .getRepository(IntegrationAccountOrmEntity)
-          .save(accounts.map((a) => IntegrationAccountMapper.toPersistence(a)));
+          .getRepository(IntegrationCredentialOrmEntity)
+          .insert(IntegrationCredentialMapper.toPersistence(credential));
+
+        if (accounts.length > 0) {
+          await manager
+            .getRepository(IntegrationAccountOrmEntity)
+            .save(
+              accounts.map((a) => IntegrationAccountMapper.toPersistence(a)),
+            );
+        }
+      });
+    } catch (error) {
+      if (
+        error instanceof QueryFailedError &&
+        (error.driverError as { constraint?: string }).constraint ===
+          'UQ_integration_accounts_whatsapp_phone_connected'
+      ) {
+        throw new DomainError(409, 'WHATSAPP_NUMBER_ALREADY_CONNECTED');
       }
-    });
+
+      throw error;
+    }
   }
 
   revokeActive(
@@ -71,6 +91,30 @@ export class TypeOrmIntegrationCredentialsRepository implements IntegrationCrede
     return this.repository.manager.transaction((manager) =>
       this.revokeIn(manager, tenantId, expertId, provider, revokedAt),
     );
+  }
+
+  deleteActive(
+    tenantId: string,
+    expertId: string,
+    provider: IntegrationProvider,
+  ): Promise<boolean> {
+    return this.repository.manager.transaction(async (manager) => {
+      const credentials = manager.getRepository(IntegrationCredentialOrmEntity);
+      const active = await credentials.find({
+        select: { id: true },
+        where: {
+          tenantId,
+          expertId,
+          provider,
+          status: IntegrationCredentialStatus.ACTIVE,
+        },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (active.length === 0) return false;
+
+      await credentials.delete({ id: In(active.map(({ id }) => id)) });
+      return true;
+    });
   }
 
   async findActiveWithAccessToken(

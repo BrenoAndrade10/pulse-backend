@@ -9,27 +9,48 @@ import { REDIS_CLIENT } from '../../shared/infra/redis/tokens';
 import { AUTH_SETTINGS } from './application/AuthSettings';
 import type { AuthSettings } from './application/AuthSettings';
 import { GetAuthProfileUseCase } from './application/use-cases/GetAuthProfileUseCase';
+import { ForgotPasswordUseCase } from './application/use-cases/ForgotPasswordUseCase';
 import { LoginUseCase } from './application/use-cases/LoginUseCase';
 import { LogoutAllSessionsUseCase } from './application/use-cases/LogoutAllSessionsUseCase';
 import { LogoutUseCase } from './application/use-cases/LogoutUseCase';
 import { RefreshSessionUseCase } from './application/use-cases/RefreshSessionUseCase';
+import { ResetPasswordUseCase } from './application/use-cases/ResetPasswordUseCase';
+import { EmailTemplateRenderer } from './application/services/EmailTemplateRenderer';
 import { AUTH_ACCOUNTS_REPOSITORY } from './domain/repositories/AuthAccountsRepository';
 import { SESSIONS_REPOSITORY } from './domain/repositories/SessionsRepository';
+import { PASSWORD_RESET_TOKENS_REPOSITORY } from './domain/repositories/PasswordResetTokensRepository';
 import { ACCESS_TOKEN_SERVICE } from './domain/services/AccessTokenService';
 import { RedisSessionsRepository } from './infra/repositories/RedisSessionsRepository';
 import { TypeOrmAuthAccountsRepository } from './infra/repositories/TypeOrmAuthAccountsRepository';
+import { TypeOrmPasswordResetTokensRepository } from './infra/repositories/TypeOrmPasswordResetTokensRepository';
 import { JwtAccessTokenService } from './infra/tokens/JwtAccessTokenService';
 import { AuthController } from './presentation/controllers/AuthController';
 import { AccessTokenGuard } from './presentation/guards/AccessTokenGuard';
+import { TwoFactorModule } from '../two-factor/TwoFactorModule';
+import { SessionIssuer } from './application/services/SessionIssuer';
+import { TwoFactorChallengeUseCase } from './application/use-cases/challenge/TwoFactorChallengeUseCase';
+import { AdminResetTwoFactorUseCase } from './application/use-cases/AdminResetTwoFactorUseCase';
+import { TwoFactorAdminController } from './presentation/controllers/TwoFactorAdminController';
+import { EmailLoginCodes } from './application/services/EmailLoginCodes';
+import { EmailChallengeUseCase } from './application/use-cases/challenge/EmailChallengeUseCase';
 
 @Module({
-  controllers: [AuthController],
+  imports: [TwoFactorModule],
+  controllers: [AuthController, TwoFactorAdminController],
   providers: [
     LoginUseCase,
     RefreshSessionUseCase,
     LogoutUseCase,
     LogoutAllSessionsUseCase,
     GetAuthProfileUseCase,
+    ForgotPasswordUseCase,
+    ResetPasswordUseCase,
+    EmailTemplateRenderer,
+    SessionIssuer,
+    EmailLoginCodes,
+    TwoFactorChallengeUseCase,
+    EmailChallengeUseCase,
+    AdminResetTwoFactorUseCase,
     {
       provide: AUTH_SETTINGS,
       useFactory: (): AuthSettings => ({
@@ -73,6 +94,12 @@ import { AccessTokenGuard } from './presentation/guards/AccessTokenGuard';
       inject: [DATA_SOURCE],
       useFactory: (dataSource: DataSource) =>
         new TypeOrmAuthAccountsRepository(dataSource),
+    },
+    {
+      provide: PASSWORD_RESET_TOKENS_REPOSITORY,
+      inject: [DATA_SOURCE],
+      useFactory: (dataSource: DataSource) =>
+        new TypeOrmPasswordResetTokensRepository(dataSource),
     },
     {
       provide: APP_GUARD,
