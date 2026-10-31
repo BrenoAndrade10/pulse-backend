@@ -30,22 +30,41 @@ describe('leadValues', () => {
     expect(normalizeText('   ')).toBeNull();
   });
 
-  it('updates with the new values and keeps what did not come again', () => {
+  it('keeps what the lead already has and only fills empty fields', () => {
     expect(
       mergeProfiles(
         {
           name: 'Ana',
           email: 'ana@exemplo.com',
           phone: '+5511999998888',
-          custom: { Origem: 'Instagram', Faturamento: '10k' },
+          custom: { Origem: 'Instagram' },
         },
-        { phone: '+5511977776666', custom: { Origem: 'Anúncio' } },
+        {
+          name: 'Atacante',
+          phone: '+5511977776666',
+          custom: { Origem: 'Anúncio', Faturamento: '10k' },
+        },
       ),
     ).toEqual({
       name: 'Ana',
       email: 'ana@exemplo.com',
-      phone: '+5511977776666',
-      custom: { Origem: 'Anúncio', Faturamento: '10k' },
+      phone: '+5511999998888',
+      custom: { Origem: 'Instagram', Faturamento: '10k' },
+    });
+  });
+
+  it('takes the incoming values for a new lead', () => {
+    expect(
+      mergeProfiles(null, {
+        name: 'Ana',
+        email: 'ana@exemplo.com',
+        custom: {},
+      }),
+    ).toEqual({
+      name: 'Ana',
+      email: 'ana@exemplo.com',
+      phone: undefined,
+      custom: {},
     });
   });
 });

@@ -1,8 +1,14 @@
 import * as yup from 'yup';
+import {
+  isSafeFieldLabel,
+  isSafeFieldSelector,
+} from '../../domain/services/fieldSelector';
 
 const ATTRIBUTE_NAME = /^[a-z][a-z0-9:_-]{0,39}$/;
 const MAX_ATTRIBUTES = 10;
 const MAX_FIELDS = 20;
+const SENSITIVE_FIELD =
+  'Senhas, cartões e dados sensíveis não podem ser salvos.';
 
 const isAttributeRecord = (value: unknown): boolean => {
   if (value === undefined) return true;
@@ -85,8 +91,15 @@ export const createTrackingRuleSchema = yup
               .trim()
               .min(1, 'Dê um nome ao campo.')
               .max(80, 'O nome do campo deve ter no máximo 80 caracteres.')
-              .required(),
-            selector: yup.string().trim().min(1).max(300).required(),
+              .required()
+              .test('safe-label', SENSITIVE_FIELD, isSafeFieldLabel),
+            selector: yup
+              .string()
+              .trim()
+              .min(1)
+              .max(300)
+              .required()
+              .test('safe-selector', SENSITIVE_FIELD, isSafeFieldSelector),
           })
           .noUnknown('Campo não permitido.')
           .required(),

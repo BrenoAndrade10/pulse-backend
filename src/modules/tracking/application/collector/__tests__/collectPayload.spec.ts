@@ -55,7 +55,7 @@ describe('parseCollectPayload', () => {
     expect(parseCollectPayload({ events })).toHaveLength(MAX_EVENTS_PER_BATCH);
   });
 
-  it('keeps only well-formed lead values', () => {
+  it('keeps only well-formed lead values and ignores a loose consent', () => {
     const [parsed] = parseCollectPayload({
       events: [
         event({
@@ -74,7 +74,6 @@ describe('parseCollectPayload', () => {
 
     expect(parsed.lead).toEqual({
       values: { email: 'a@b.com', consent: true },
-      consent: true,
     });
   });
 

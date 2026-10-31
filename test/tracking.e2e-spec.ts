@@ -584,7 +584,9 @@ describe('Tracking (e2e)', () => {
 
     it('serves the public pixel config with a short browser cache', async () => {
       const response = await request(app.getHttpServer())
-        .get(`/t/${publicKey}/config`)
+        .get(
+          `/t/${publicKey}/config?page=${encodeURIComponent(`${pageOrigin}/captura`)}`,
+        )
         .set('Origin', pageOrigin)
         .expect(200);
 

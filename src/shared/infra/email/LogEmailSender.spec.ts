@@ -23,16 +23,11 @@ describe('LogEmailSender', () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining('token-secret'));
   });
 
-  it('reports the missing provider on production boot without sensitive data', async () => {
+  it('never logs e-mail content in production', async () => {
     process.env.NODE_ENV = 'production';
-    const error = jest.spyOn(Logger.prototype, 'error').mockImplementation();
-    const sender = new LogEmailSender();
+    const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
 
-    sender.onModuleInit();
-    await sender.send(input);
-    expect(error).toHaveBeenCalledWith(
-      'EMAIL_PROVIDER_NOT_CONFIGURED: recuperação de senha inoperante',
-    );
-    expect(error).not.toHaveBeenCalledWith(expect.stringContaining(input.to));
+    await new LogEmailSender().send(input);
+    expect(log).not.toHaveBeenCalled();
   });
 });

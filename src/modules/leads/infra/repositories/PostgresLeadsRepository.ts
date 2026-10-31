@@ -159,11 +159,11 @@ export class PostgresLeadsRepository implements LeadsRepository {
       `
         UPDATE "leads" SET
           "emailHash" = COALESCE("emailHash", $2),
-          "phoneHash" = COALESCE($3, "phoneHash"),
+          "phoneHash" = COALESCE("phoneHash", $3),
           "profileEncrypted" = $4,
           "profileIv" = $5,
           "profileAuthTag" = $6,
-          "consent" = COALESCE($7, "consent"),
+          "consent" = CASE WHEN $7::boolean IS TRUE THEN TRUE ELSE COALESCE("consent", $7::boolean) END,
           "lastSeenAt" = GREATEST("lastSeenAt", $8),
           "updatedAt" = timezone('utc', now())
         WHERE "id" = $1

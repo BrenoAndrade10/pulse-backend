@@ -1,4 +1,4 @@
-import { Global, Module } from '@nestjs/common';
+import { Global, Logger, Module } from '@nestjs/common';
 import { ID_GENERATOR } from './domain/IdGenerator';
 import { PASSWORD_HASHER } from './domain/PasswordHasher';
 import { EMAIL_SENDER } from './domain/EmailSender';
@@ -28,8 +28,15 @@ import { RateLimiter } from './infra/redis/RateLimiter';
       useFactory: (
         logEmailSender: LogEmailSender,
         resendEmailSender: ResendEmailSender,
-      ) =>
-        Environment.vars.RESEND_API_KEY ? resendEmailSender : logEmailSender,
+      ) => {
+        if (Environment.vars.RESEND_API_KEY) return resendEmailSender;
+        if (process.env.NODE_ENV === 'production') {
+          new Logger('EmailSender').error(
+            'EMAIL_PROVIDER_NOT_CONFIGURED: recuperação de senha inoperante',
+          );
+        }
+        return logEmailSender;
+      },
     },
     RateLimiter,
   ],

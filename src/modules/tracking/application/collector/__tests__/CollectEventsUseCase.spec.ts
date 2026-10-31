@@ -197,6 +197,35 @@ describe('CollectEventsUseCase', () => {
     });
   });
 
+  it('ignores a consent sent outside the mapped consent field', async () => {
+    const rule = makeRule({
+      fields: [
+        {
+          key: 'email',
+          slug: 'email',
+          label: 'E-mail',
+          selector: '[name="email"]',
+        },
+      ],
+    });
+    configs.get.mockResolvedValue({
+      pixel,
+      rules: [rule],
+      rulesById: new Map([[rule.id, rule]]),
+    });
+
+    await run([
+      event({
+        ruleId: RULE_ID,
+        lead: { values: { email: 'ana@site.com' }, consent: true },
+      }),
+    ]);
+
+    expect(capture.capture).toHaveBeenCalledWith(
+      expect.objectContaining({ consent: undefined }),
+    );
+  });
+
   it('takes the event name from the saved rule, never from the browser', async () => {
     await run([
       event({ name: 'Purchase' }),
@@ -235,6 +264,12 @@ describe('CollectEventsUseCase', () => {
 
     // 120 por minuto: 6 lotes de 20 entram, o 7º não.
     expect(sink.write).toHaveBeenCalledTimes(6);
+  });
+
+  it('stops looking up pixels after too many requests from one IP', async () => {
+    for (let i = 0; i < 601; i++) await run([event()]);
+
+    expect(configs.get).toHaveBeenCalledTimes(600);
   });
 
   it('resolves the launch of a page once per minute', async () => {

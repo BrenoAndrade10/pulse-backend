@@ -36,22 +36,22 @@ export function normalizeText(value: string): string | null {
 }
 
 /**
- * Junta o que chegou agora com o que o lead já tinha: valores novos
- * atualizam, campos que não vieram neste envio continuam como estavam.
+ * Junta o que chegou agora com o que o lead já tinha: um envio anônimo só
+ * completa campos vazios, nunca troca o que o lead já tem.
  */
 export function mergeProfiles(
   current: LeadProfile | null,
   incoming: LeadProfile,
 ): LeadProfile {
-  const custom = { ...(current?.custom ?? {}), ...incoming.custom };
+  const custom = { ...incoming.custom, ...(current?.custom ?? {}) };
   const limited = Object.fromEntries(
     Object.entries(custom).slice(0, MAX_CUSTOM_FIELDS),
   );
 
   return {
-    name: incoming.name ?? current?.name,
-    email: incoming.email ?? current?.email,
-    phone: incoming.phone ?? current?.phone,
+    name: current?.name ?? incoming.name,
+    email: current?.email ?? incoming.email,
+    phone: current?.phone ?? incoming.phone,
     custom: limited,
   };
 }

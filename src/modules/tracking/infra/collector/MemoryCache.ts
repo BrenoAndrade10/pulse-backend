@@ -5,6 +5,7 @@
  */
 export class MemoryCache<T> {
   private readonly entries = new Map<string, { value: T; expiresAt: number }>();
+  private readonly loading = new Map<string, Promise<T>>();
 
   constructor(
     private readonly ttlMs: number,
@@ -13,20 +14,41 @@ export class MemoryCache<T> {
 
   async get(key: string, load: () => Promise<T>): Promise<T> {
     const entry = this.entries.get(key);
-    if (entry && entry.expiresAt > Date.now()) return entry.value;
-
-    const value = await load();
-    if (this.entries.size >= this.maxEntries) {
-      // Map mantém a ordem de inserção: o primeiro é o mais antigo.
-      const oldest = this.entries.keys().next();
-      if (!oldest.done) this.entries.delete(oldest.value);
+    if (entry && entry.expiresAt > Date.now()) {
+      this.entries.delete(key);
+      this.entries.set(key, entry);
+      return entry.value;
     }
-    this.entries.set(key, { value, expiresAt: Date.now() + this.ttlMs });
-    return value;
+
+    const pending = this.loading.get(key);
+    if (pending) return pending;
+
+    const promise = load()
+      .then((value) => {
+        this.set(key, value);
+        return value;
+      })
+      .finally(() => this.loading.delete(key));
+    this.loading.set(key, promise);
+    return promise;
+  }
+
+  peek(key: string): T | undefined {
+    const entry = this.entries.get(key);
+    return entry && entry.expiresAt > Date.now() ? entry.value : undefined;
   }
 
   delete(key: string): void {
     this.entries.delete(key);
+  }
+
+  set(key: string, value: T): void {
+    this.entries.delete(key);
+    if (this.entries.size >= this.maxEntries) {
+      const oldest = this.entries.keys().next();
+      if (!oldest.done) this.entries.delete(oldest.value);
+    }
+    this.entries.set(key, { value, expiresAt: Date.now() + this.ttlMs });
   }
 }
 
@@ -50,6 +72,11 @@ export class WindowRateLimiter {
 
     if (!window || window.resetAt <= now) {
       if (this.windows.size >= this.maxKeys) this.sweep(now);
+      this.windows.delete(key);
+      if (this.windows.size >= this.maxKeys) {
+        const oldest = this.windows.keys().next();
+        if (!oldest.done) this.windows.delete(oldest.value);
+      }
       window = { count: 0, resetAt: now + this.windowMs };
       this.windows.set(key, window);
     }

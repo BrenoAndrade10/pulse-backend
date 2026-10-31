@@ -33,6 +33,7 @@ import { PixelConfigProvider, type PixelConfig } from './PixelConfigProvider';
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
 /** Eventos por minuto por IP e pixel. Uma visita normal manda poucos. */
 const EVENTS_PER_MINUTE = 120;
+const REQUESTS_PER_IP_PER_MINUTE = 600;
 
 export type CollectInput = {
   publicKey: string;
@@ -50,6 +51,10 @@ export type CollectInput = {
 export class CollectEventsUseCase {
   private readonly logger = new Logger(CollectEventsUseCase.name);
   private readonly limiter = new WindowRateLimiter(EVENTS_PER_MINUTE, 60_000);
+  private readonly ipLimiter = new WindowRateLimiter(
+    REQUESTS_PER_IP_PER_MINUTE,
+    60_000,
+  );
   private readonly launches = new MemoryCache<string | null>(60_000);
   private warnedLeadsKey = false;
 
@@ -69,6 +74,7 @@ export class CollectEventsUseCase {
 
   async execute(input: CollectInput): Promise<void> {
     if (isBot(input.userAgent)) return;
+    if (!this.ipLimiter.take(input.ip)) return;
 
     const config = await this.configs.get(input.publicKey);
     const origin = config ? this.allowedOrigin(config, input.origin) : null;
@@ -216,7 +222,7 @@ export class CollectEventsUseCase {
   ): Promise<string | null> {
     const lead = event.lead!;
     const values: CaptureLeadInput['values'] = { custom: {} };
-    let consent = lead.consent;
+    let consent: boolean | undefined;
 
     for (const field of rule.fields) {
       const value = lead.values[field.slug];

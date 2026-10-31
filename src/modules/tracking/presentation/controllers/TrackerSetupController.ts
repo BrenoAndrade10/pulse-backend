@@ -10,6 +10,7 @@ import {
 import { ValidationError } from 'yup';
 import { DomainError } from '../../../../shared/errors/DomainError';
 import { Public } from '../../../../shared/presentation/decorators/Public';
+import { RateLimit } from '../../../../shared/presentation/decorators/RateLimit';
 import { isUuidV7 } from '../../../../shared/presentation/validators/isUuidV7';
 import { CreateTrackingRuleUseCase } from '../../application/use-cases/CreateTrackingRuleUseCase';
 import { DeleteTrackingRuleUseCase } from '../../application/use-cases/DeleteTrackingRuleUseCase';
@@ -28,6 +29,7 @@ export const SETUP_TOKEN_HEADER = 'x-pulse-setup-token';
  * origem da página.
  */
 @Public()
+@RateLimit([{ key: 'tracking:setup:ip', by: ['ip'], limit: 120, window: 60 }])
 @Controller('t/setup')
 export class TrackerSetupController {
   constructor(

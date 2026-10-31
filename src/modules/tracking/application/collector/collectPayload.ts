@@ -13,7 +13,7 @@ export type CollectedEvent = {
   sessionId: string;
   utm: Utm;
   fbclid: string;
-  lead: { values: Record<string, string | boolean>; consent?: boolean } | null;
+  lead: { values: Record<string, string | boolean> } | null;
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -46,11 +46,7 @@ function parseLead(value: unknown): CollectedEvent['lead'] {
     else if (typeof item === 'string') values[slug] = item.slice(0, 500);
   }
 
-  const consent = (value as { consent?: unknown }).consent;
-  return {
-    values,
-    consent: typeof consent === 'boolean' ? consent : undefined,
-  };
+  return { values };
 }
 
 /**

@@ -23,6 +23,7 @@ export type PixelConfig = {
 @Injectable()
 export class PixelConfigProvider {
   private readonly cache = new MemoryCache<PixelConfig | null>(30_000);
+  private readonly missing = new MemoryCache<true>(300_000, 50_000);
 
   constructor(
     @Inject(TRACKING_PIXELS_REPOSITORY)
@@ -32,10 +33,11 @@ export class PixelConfigProvider {
     private readonly rules: TrackingRulesRepository,
   ) {}
 
-  get(publicKey: string): Promise<PixelConfig | null> {
-    if (!PIXEL_KEY_PATTERN.test(publicKey)) return Promise.resolve(null);
+  async get(publicKey: string): Promise<PixelConfig | null> {
+    if (!PIXEL_KEY_PATTERN.test(publicKey)) return null;
+    if (this.missing.peek(publicKey)) return null;
 
-    return this.cache.get(publicKey, async () => {
+    const config = await this.cache.get(publicKey, async () => {
       const pixel = await this.pixels.findByPublicKey(publicKey);
       if (!pixel) return null;
 
@@ -46,5 +48,11 @@ export class PixelConfigProvider {
         rulesById: new Map(rules.map((rule) => [rule.id, rule])),
       };
     });
+
+    if (!config) {
+      this.cache.delete(publicKey);
+      this.missing.set(publicKey, true);
+    }
+    return config;
   }
 }
