@@ -1,4 +1,4 @@
-import { Controller, Get, Res } from '@nestjs/common';
+import { Controller, Get, Res, StreamableFile } from '@nestjs/common';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Response } from 'express';
@@ -13,10 +13,12 @@ const PULSE_LOGO_PATH = join(
 @Controller('assets/brand')
 export class PublicAssetsController {
   @Get('pulse-logo.png')
-  getPulseLogo(@Res({ passthrough: true }) response: Response): Buffer {
+  getPulseLogo(@Res({ passthrough: true }) response: Response): StreamableFile {
     response.statusCode = 200;
     response.setHeader('Content-Type', 'image/png');
     response.setHeader('Cache-Control', 'public, max-age=86400');
-    return readFileSync(PULSE_LOGO_PATH);
+    return new StreamableFile(readFileSync(PULSE_LOGO_PATH), {
+      type: 'image/png',
+    });
   }
 }

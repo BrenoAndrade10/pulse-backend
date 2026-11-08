@@ -133,10 +133,17 @@ export class InstagramOAuthClient implements InstagramOAuthGateway {
       });
     }
 
+    const pagesWithInstagram = pages.filter(
+      (page) => page.instagram_business_account !== undefined,
+    ).length;
+    const pagesWithToken = pages.filter((page) =>
+      Boolean(page.access_token),
+    ).length;
+
     if (!authorizingUser.id || accounts.size === 0) {
       throw new InstagramOAuthError(
         'no_instagram_account',
-        'Nenhuma conta profissional vinculada a uma Página foi autorizada.',
+        `Nenhuma conta profissional vinculada a uma Página foi autorizada. (paginas=${pages.length}, comInstagram=${pagesWithInstagram}, comToken=${pagesWithToken}, permissoes=${permissions.join(',')})`,
       );
     }
 

@@ -185,7 +185,7 @@ describe('InstagramOAuthClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it('rejects zero or multiple professional accounts instead of guessing', async () => {
+  it('reports safe diagnostics when no Page is returned', async () => {
     const run = async (data: unknown[]) => {
       fetchMock
         .mockResolvedValueOnce(jsonResponse(grantedPermissions()))
@@ -195,26 +195,62 @@ describe('InstagramOAuthClient', () => {
       return client.getAuthorizedAccount('user-token');
     };
 
-    await expect(run([])).rejects.toEqual(
-      expect.objectContaining({ reason: 'no_instagram_account' }),
+    const zeroPagesError = (await run([]).catch(
+      (error: unknown) => error,
+    )) as Error & {
+      reason?: string;
+    };
+
+    expect(zeroPagesError).toMatchObject({ reason: 'no_instagram_account' });
+    expect(zeroPagesError.message).toContain(
+      `(paginas=0, comInstagram=0, comToken=0, permissoes=${INSTAGRAM_REQUIRED_PERMISSIONS.join(',')})`,
     );
+
     fetchMock.mockReset();
-    await expect(
-      run([
-        {
-          id: 'page-1',
-          name: 'One',
-          access_token: 'page-1-token',
-          instagram_business_account: { id: 'ig-1' },
-        },
-        {
-          id: 'page-2',
-          name: 'Two',
-          access_token: 'page-2-token',
-          instagram_business_account: { id: 'ig-2' },
-        },
-      ]),
-    ).rejects.toEqual(
+
+    const withoutInstagramError = (await run([
+      {
+        id: 'page-1',
+        name: 'Private Page Name',
+        access_token: 'page-token',
+        tasks: ['PROFILE_PLUS_MESSAGING', 'PROFILE_PLUS_MODERATE'],
+      },
+    ]).catch((error: unknown) => error)) as Error & { reason?: string };
+
+    expect(withoutInstagramError).toMatchObject({
+      reason: 'no_instagram_account',
+    });
+    expect(withoutInstagramError.message).toContain(
+      `(paginas=1, comInstagram=0, comToken=1, permissoes=${INSTAGRAM_REQUIRED_PERMISSIONS.join(',')})`,
+    );
+    expect(withoutInstagramError.message).not.toContain('Private Page Name');
+    expect(withoutInstagramError.message).not.toContain('page-1');
+    expect(withoutInstagramError.message).not.toContain('page-token');
+  });
+
+  it('rejects multiple professional accounts instead of guessing', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(grantedPermissions()));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'facebook-user' }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        data: [
+          {
+            id: 'page-1',
+            name: 'One',
+            access_token: 'page-1-token',
+            instagram_business_account: { id: 'ig-1' },
+          },
+          {
+            id: 'page-2',
+            name: 'Two',
+            access_token: 'page-2-token',
+            instagram_business_account: { id: 'ig-2' },
+          },
+        ],
+      }),
+    );
+
+    await expect(client.getAuthorizedAccount('user-token')).rejects.toEqual(
       expect.objectContaining({ reason: 'multiple_instagram_accounts' }),
     );
   });
