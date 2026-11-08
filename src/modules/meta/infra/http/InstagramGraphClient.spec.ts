@@ -26,7 +26,7 @@ describe('InstagramGraphClient', () => {
 
   beforeEach(() => {
     Environment.vars = {
-      INSTAGRAM_GRAPH_API_VERSION: 'v25.0',
+      META_GRAPH_API_VERSION: 'v25.0',
     } as typeof Environment.vars;
     fetchMock = jest.spyOn(global, 'fetch');
   });
@@ -35,7 +35,7 @@ describe('InstagramGraphClient', () => {
     fetchMock.mockRestore();
   });
 
-  it('calls graph.instagram.com, where Instagram Login tokens are valid', async () => {
+  it('calls Facebook Graph with the Page token in the authorization header', async () => {
     respond(200, { data: [] });
 
     await expect(
@@ -43,10 +43,13 @@ describe('InstagramGraphClient', () => {
     ).resolves.toEqual({ data: [] });
 
     const url = fetchMock.mock.calls[0][0] as URL;
-    expect(url.origin).toBe('https://graph.instagram.com');
+    expect(url.origin).toBe('https://graph.facebook.com');
     expect(url.pathname).toBe('/v25.0/ig-user/media');
     expect(url.searchParams.get('limit')).toBe('10');
-    expect(url.searchParams.get('access_token')).toBe('ig-token');
+    expect(url.searchParams.has('access_token')).toBe(false);
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({
+      Authorization: 'Bearer ig-token',
+    });
   });
 
   it('asks for a new connection when Meta rejects the token', async () => {
@@ -62,8 +65,10 @@ describe('InstagramGraphClient', () => {
     });
   });
 
-  it('reports other Meta errors without leaking the token', async () => {
-    respond(500, { error: { code: 2, message: 'Service temporarily down' } });
+  it('reports other Meta errors without leaking provider details or the token', async () => {
+    respond(500, {
+      error: { code: 2, message: 'Service temporarily down ig-token' },
+    });
 
     const error = await failure(client.get('/me/media', {}, 'ig-token'));
 
@@ -71,7 +76,10 @@ describe('InstagramGraphClient', () => {
       statusCode: 502,
       reason: 'INSTAGRAM_GRAPH_API_ERROR',
     });
-    expect(JSON.stringify(error.data)).toContain('Service temporarily down');
+    expect(error.data).toEqual({ status: 500, code: 2 });
+    expect(JSON.stringify(error.data)).not.toContain(
+      'Service temporarily down',
+    );
     expect(JSON.stringify(error.data)).not.toContain('ig-token');
   });
 
@@ -100,7 +108,7 @@ describe('InstagramGraphClient', () => {
 
     const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
     expect(url.toString()).toBe(
-      'https://graph.instagram.com/v25.0/ig-user/messages',
+      'https://graph.facebook.com/v25.0/ig-user/messages',
     );
     expect(url.searchParams.has('access_token')).toBe(false);
     expect(init.method).toBe('POST');
@@ -119,7 +127,8 @@ describe('InstagramGraphClient', () => {
     const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
     expect(url.pathname).toBe('/v25.0/me/subscribed_apps');
     expect(url.searchParams.get('subscribed_fields')).toBe('comments');
-    expect(url.searchParams.get('access_token')).toBe('ig-token');
+    expect(url.searchParams.has('access_token')).toBe(false);
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer ig-token' });
     expect(init.method).toBe('POST');
   });
 
@@ -167,7 +176,8 @@ describe('InstagramGraphClient', () => {
 
     const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
     expect(url.pathname).toBe('/v25.0/comment-1/replies');
-    expect(url.searchParams.get('access_token')).toBe('ig-token');
+    expect(url.searchParams.has('access_token')).toBe(false);
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer ig-token' });
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body as string)).toEqual({
       message: 'Te mandei no direct!',

@@ -1,33 +1,44 @@
 export const INSTAGRAM_OAUTH_GATEWAY = Symbol('INSTAGRAM_OAUTH_GATEWAY');
 
-export type InstagramShortLivedToken = {
-  accessToken: string;
-  appScopedUserId: string;
-  permissions: string[];
-};
-
-export type InstagramLongLivedToken = {
+export type MetaUserAccessToken = {
   accessToken: string;
   expiresInSeconds: number;
 };
 
-export type InstagramProfile = {
+export type InstagramAuthorizedAccount = {
+  authorizingUserId: string;
+  permissions: string[];
+  accessToken: string;
   userId: string;
   username: string;
+  pageId: string;
+  pageName: string;
+  pageTasks: string[];
 };
 
 export interface InstagramOAuthGateway {
   isConfigured(): boolean;
   buildAuthorizationUrl(state: string): string;
-  exchangeCode(code: string): Promise<InstagramShortLivedToken>;
+  exchangeCode(code: string): Promise<MetaUserAccessToken>;
   exchangeForLongLivedToken(
     shortLivedToken: string,
-  ): Promise<InstagramLongLivedToken>;
-  getProfile(accessToken: string): Promise<InstagramProfile>;
+  ): Promise<MetaUserAccessToken>;
+  getAuthorizedAccount(
+    userAccessToken: string,
+  ): Promise<InstagramAuthorizedAccount>;
 }
 
+export type InstagramOAuthFailure =
+  | 'exchange_failed'
+  | 'missing_permissions'
+  | 'no_instagram_account'
+  | 'multiple_instagram_accounts';
+
 export class InstagramOAuthError extends Error {
-  constructor(message: string) {
+  constructor(
+    public readonly reason: InstagramOAuthFailure,
+    message: string,
+  ) {
     super(message);
     this.name = 'InstagramOAuthError';
   }

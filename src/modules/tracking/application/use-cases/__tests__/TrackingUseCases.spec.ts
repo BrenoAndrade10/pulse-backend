@@ -18,7 +18,10 @@ import {
   type TrackingRuleProps,
 } from '../../../domain/entities/TrackingRule';
 import type { TrackingSetupSession } from '../../../domain/repositories/TrackingSetupSessionStore';
-import { SETUP_SESSION_IDLE_SECONDS } from '../../resolveSetupSession';
+import {
+  SETUP_SESSION_IDLE_SECONDS,
+  SETUP_SESSION_MAX_AGE_SECONDS,
+} from '../../resolveSetupSession';
 import { CreateTrackingPixelUseCase } from '../CreateTrackingPixelUseCase';
 import {
   CreateTrackingRuleUseCase,
@@ -26,6 +29,7 @@ import {
 } from '../CreateTrackingRuleUseCase';
 import { DeleteTrackingRuleUseCase } from '../DeleteTrackingRuleUseCase';
 import { OpenTrackingSetupUseCase } from '../OpenTrackingSetupUseCase';
+import { RevokeTrackingSetupUseCase } from '../RevokeTrackingSetupUseCase';
 import { GetTrackingPixelUseCase } from '../GetTrackingPixelUseCase';
 import {
   SETUP_SESSION_TTL_SECONDS,
@@ -57,6 +61,7 @@ describe('tracking use cases', () => {
   let experts: jest.Mocked<ExpertsRepository>;
   let pixels: jest.Mocked<TrackingPixelsRepository>;
   let sessions: jest.Mocked<TrackingSetupSessionStore>;
+  let logins: { exists: jest.Mock<Promise<boolean>, [string]> };
   let rules: jest.Mocked<TrackingRulesRepository>;
   let pages: jest.Mocked<TrackingPagesRepository>;
 
@@ -93,7 +98,10 @@ describe('tracking use cases', () => {
       findByPublicKey: jest.fn(),
       touchLastEvent: jest.fn(),
     };
-    sessions = { save: jest.fn(), touch: jest.fn() };
+    sessions = { save: jest.fn(), touch: jest.fn(), revokeByPixel: jest.fn() };
+    logins = {
+      exists: jest.fn<Promise<boolean>, [string]>().mockResolvedValue(true),
+    };
     rules = {
       create: jest.fn(),
       findForPage: jest.fn().mockResolvedValue([]),
@@ -218,7 +226,9 @@ describe('tracking use cases', () => {
           expertId: 'expert-a',
           pixelId: 'pixel-a',
           userId: 'user-a',
+          authSessionId: auth.sessionId,
           url: 'https://www.meusite.com.br/vendas',
+          createdAt: expect.any(String) as string,
         },
         SETUP_SESSION_TTL_SECONDS,
       );
@@ -295,7 +305,9 @@ describe('tracking use cases', () => {
       expertId: 'expert-a',
       pixelId: 'pixel-a',
       userId: 'user-a',
+      authSessionId: 'login-a',
       url: 'https://www.meusite.com.br/vendas?utm_source=ig',
+      createdAt: new Date().toISOString(),
     };
     const element = {
       selector: '#comprar',
@@ -328,7 +340,9 @@ describe('tracking use cases', () => {
 
     describe('session checks', () => {
       const open = (input: { token?: string; origin?: string }) =>
-        new OpenTrackingSetupUseCase(sessions, pixels, rules).execute(input);
+        new OpenTrackingSetupUseCase(sessions, logins, pixels, rules).execute(
+          input,
+        );
 
       it('renews the session on every use', async () => {
         await open({ token, origin });
@@ -359,6 +373,30 @@ describe('tracking use cases', () => {
         });
       });
 
+      it('refuses sessions older than the maximum age even while in use', async () => {
+        sessions.touch.mockResolvedValue({
+          ...session,
+          createdAt: new Date(
+            Date.now() - (SETUP_SESSION_MAX_AGE_SECONDS + 1) * 1000,
+          ).toISOString(),
+        });
+
+        await expect(open({ token, origin })).rejects.toMatchObject({
+          statusCode: 401,
+          reason: 'TRACKING_SETUP_SESSION_INVALID',
+        });
+      });
+
+      it('refuses sessions whose login was closed', async () => {
+        logins.exists.mockResolvedValue(false);
+
+        await expect(open({ token, origin })).rejects.toMatchObject({
+          statusCode: 401,
+          reason: 'TRACKING_SETUP_SESSION_INVALID',
+        });
+        expect(logins.exists).toHaveBeenCalledWith('login-a');
+      });
+
       it.each([
         ['another site', 'https://evil.com'],
         ['another protocol', 'http://www.meusite.com.br'],
@@ -379,10 +417,12 @@ describe('tracking use cases', () => {
         rules.findForPage.mockResolvedValue([rule]);
 
         await expect(
-          new OpenTrackingSetupUseCase(sessions, pixels, rules).execute({
-            token,
-            origin,
-          }),
+          new OpenTrackingSetupUseCase(sessions, logins, pixels, rules).execute(
+            {
+              token,
+              origin,
+            },
+          ),
         ).resolves.toEqual({
           publicKey: 'PX_abcdefghijklmnopqrst',
           pageUrl: 'https://www.meusite.com.br/vendas',
@@ -398,17 +438,19 @@ describe('tracking use cases', () => {
         pixels.findByExpert.mockResolvedValue(null);
 
         await expect(
-          new OpenTrackingSetupUseCase(sessions, pixels, rules).execute({
-            token,
-            origin,
-          }),
+          new OpenTrackingSetupUseCase(sessions, logins, pixels, rules).execute(
+            {
+              token,
+              origin,
+            },
+          ),
         ).rejects.toMatchObject({ reason: 'TRACKING_SETUP_SESSION_INVALID' });
       });
     });
 
     describe('CreateTrackingRuleUseCase', () => {
       const useCase = () =>
-        new CreateTrackingRuleUseCase(sessions, rules, {
+        new CreateTrackingRuleUseCase(sessions, logins, rules, {
           generate: () => 'new-rule',
         });
 
@@ -474,9 +516,32 @@ describe('tracking use cases', () => {
       });
     });
 
+    describe('RevokeTrackingSetupUseCase', () => {
+      it('closes every setup session of the expert pixel', async () => {
+        await new RevokeTrackingSetupUseCase(experts, pixels, sessions).execute(
+          'expert-a',
+          auth,
+        );
+
+        expect(sessions.revokeByPixel).toHaveBeenCalledWith('pixel-a');
+      });
+
+      it('refuses experts of another tenant', async () => {
+        experts.findByTenantIdAndId.mockResolvedValue(null);
+
+        await expect(
+          new RevokeTrackingSetupUseCase(experts, pixels, sessions).execute(
+            'expert-a',
+            auth,
+          ),
+        ).rejects.toMatchObject({ reason: 'EXPERT_NOT_FOUND' });
+        expect(sessions.revokeByPixel).not.toHaveBeenCalled();
+      });
+    });
+
     describe('DeleteTrackingRuleUseCase', () => {
       it('only deletes rules of the session pixel', async () => {
-        await new DeleteTrackingRuleUseCase(sessions, rules).execute({
+        await new DeleteTrackingRuleUseCase(sessions, logins, rules).execute({
           token,
           origin,
           ruleId: 'rule-a',

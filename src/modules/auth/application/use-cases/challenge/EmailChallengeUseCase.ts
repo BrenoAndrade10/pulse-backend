@@ -86,7 +86,7 @@ export class EmailChallengeUseCase {
     );
     const code = this.codes.generate();
     try {
-      await this.send(user.email, code, input.userAgent, input.ip);
+      await this.send(user.email, code, input.userAgent);
     } catch {
       throw new DomainError(503, 'EMAIL_SEND_FAILED');
     }
@@ -107,13 +107,12 @@ export class EmailChallengeUseCase {
     email: string,
     code: string,
     userAgent: string | null,
-    ip: string | null,
   ): Promise<void> {
     const rendered = this.templates.render('login-code', {
       title: 'Seu código de acesso',
       code,
       validMinutes: 10,
-      context: `${this.browser(userAgent)} · ${this.approximateIp(ip)}`,
+      context: this.browser(userAgent),
     });
     return this.emailSender.send({
       to: email,
@@ -129,14 +128,5 @@ export class EmailChallengeUseCase {
     if (/Chrome\//.test(value)) return 'Chrome';
     if (/Safari\//.test(value)) return 'Safari';
     return 'Navegador desconhecido';
-  }
-
-  private approximateIp(ip: string | null): string {
-    if (!ip) return 'IP desconhecido';
-    if (ip.includes(':')) return `${ip.split(':').slice(0, 3).join(':')}:…`;
-    const parts = ip.split('.');
-    return parts.length === 4
-      ? `${parts.slice(0, 3).join('.')}.x`
-      : 'IP desconhecido';
   }
 }

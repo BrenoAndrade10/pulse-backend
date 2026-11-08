@@ -70,12 +70,16 @@ export class TypeOrmIntegrationCredentialsRepository implements DeletableIntegra
         }
       });
     } catch (error) {
-      if (
-        error instanceof QueryFailedError &&
-        (error.driverError as { constraint?: string }).constraint ===
-          'UQ_integration_accounts_whatsapp_phone_connected'
-      ) {
-        throw new DomainError(409, 'WHATSAPP_NUMBER_ALREADY_CONNECTED');
+      if (error instanceof QueryFailedError) {
+        const constraint = (error.driverError as { constraint?: string })
+          .constraint;
+
+        if (constraint === 'UQ_integration_accounts_whatsapp_phone_connected') {
+          throw new DomainError(409, 'WHATSAPP_NUMBER_ALREADY_CONNECTED');
+        }
+        if (constraint === 'UQ_integration_accounts_instagram_connected') {
+          throw new DomainError(409, 'INSTAGRAM_ACCOUNT_ALREADY_CONNECTED');
+        }
       }
 
       throw error;

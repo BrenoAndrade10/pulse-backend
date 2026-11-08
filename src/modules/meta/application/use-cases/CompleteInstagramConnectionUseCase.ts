@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ID_GENERATOR } from '../../../../shared/domain/IdGenerator';
 import type { IdGenerator } from '../../../../shared/domain/IdGenerator';
+import { DomainError } from '../../../../shared/errors/DomainError';
 import { EXPERTS_REPOSITORY } from '../../../experts/domain/repositories/ExpertsRepository';
 import type { ExpertsRepository } from '../../../experts/domain/repositories/ExpertsRepository';
 import { IntegrationAccount } from '../../../integrations/domain/entities/IntegrationAccount';
@@ -8,6 +9,8 @@ import { IntegrationCredential } from '../../../integrations/domain/entities/Int
 import { IntegrationAccountType } from '../../../integrations/domain/enums/IntegrationAccountType';
 import { IntegrationCredentialStatus } from '../../../integrations/domain/enums/IntegrationCredentialStatus';
 import { IntegrationProvider } from '../../../integrations/domain/enums/IntegrationProvider';
+import { INTEGRATION_ACCOUNTS_REPOSITORY } from '../../../integrations/domain/repositories/IntegrationAccountsRepository';
+import type { IntegrationAccountsRepository } from '../../../integrations/domain/repositories/IntegrationAccountsRepository';
 import { INTEGRATION_CREDENTIALS_REPOSITORY } from '../../../integrations/domain/repositories/IntegrationCredentialsRepository';
 import type { IntegrationCredentialsRepository } from '../../../integrations/domain/repositories/IntegrationCredentialsRepository';
 import { OAUTH_STATE_STORE } from '../../domain/repositories/OAuthStateStore';
@@ -28,7 +31,14 @@ export type CompleteInstagramConnectionInput = {
 
 /** Motivos expostos ao frontend na URL de retorno (nunca detalhes internos). */
 export type InstagramConnectionFailure =
-  'invalid_state' | 'denied' | 'expert_not_found' | 'exchange_failed';
+  | 'invalid_state'
+  | 'denied'
+  | 'expert_not_found'
+  | 'exchange_failed'
+  | 'missing_permissions'
+  | 'no_instagram_account'
+  | 'multiple_instagram_accounts'
+  | 'account_already_connected';
 
 export type CompleteInstagramConnectionOutput =
   | { status: 'connected'; expertId: string; username: string }
@@ -54,6 +64,9 @@ export class CompleteInstagramConnectionUseCase {
 
     @Inject(INTEGRATION_CREDENTIALS_REPOSITORY)
     private readonly credentialsRepository: IntegrationCredentialsRepository,
+
+    @Inject(INTEGRATION_ACCOUNTS_REPOSITORY)
+    private readonly accountsRepository: IntegrationAccountsRepository,
 
     @Inject(INTEGRATION_TOKEN_CIPHER)
     private readonly cipher: IntegrationTokenCipher,
@@ -95,11 +108,33 @@ export class CompleteInstagramConnectionUseCase {
     try {
       // A Meta acrescenta "#_" ao final do código, que não faz parte dele.
       const code = input.code.replace(/#_$/, '');
-      const shortLived = await this.instagram.exchangeCode(code);
-      const longLived = await this.instagram.exchangeForLongLivedToken(
-        shortLived.accessToken,
+      const exchanged = await this.instagram.exchangeCode(code);
+      const userToken =
+        exchanged.expiresInSeconds >= 30 * 24 * 60 * 60
+          ? exchanged
+          : await this.instagram.exchangeForLongLivedToken(
+              exchanged.accessToken,
+            );
+      const account = await this.instagram.getAuthorizedAccount(
+        userToken.accessToken,
       );
-      const profile = await this.instagram.getProfile(longLived.accessToken);
+      const connectedAccounts =
+        await this.accountsRepository.findConnectedByExternalId(
+          IntegrationProvider.INSTAGRAM,
+          IntegrationAccountType.INSTAGRAM_ACCOUNT,
+          account.userId,
+        );
+
+      if (
+        connectedAccounts.some(
+          (connected) =>
+            connected.tenantId !== origin.tenantId ||
+            connected.expertId !== origin.expertId,
+        )
+      ) {
+        return fail('account_already_connected');
+      }
+
       const now = new Date();
       const owner = {
         tenantId: origin.tenantId,
@@ -112,16 +147,16 @@ export class CompleteInstagramConnectionUseCase {
         new IntegrationCredential({
           ...owner,
           id: credentialId,
-          externalUserId: shortLived.appScopedUserId,
-          accessToken: this.cipher.encrypt(longLived.accessToken, {
+          externalUserId: account.authorizingUserId,
+          accessToken: this.cipher.encrypt(account.accessToken, {
             ...owner,
             credentialId,
             purpose: 'access_token',
           }),
           tokenExpiresAt: new Date(
-            now.getTime() + longLived.expiresInSeconds * 1000,
+            now.getTime() + userToken.expiresInSeconds * 1000,
           ),
-          scopes: shortLived.permissions,
+          scopes: account.permissions,
           status: IntegrationCredentialStatus.ACTIVE,
           createdAt: now,
           updatedAt: now,
@@ -132,9 +167,14 @@ export class CompleteInstagramConnectionUseCase {
             id: this.idGenerator.generate(),
             credentialId,
             type: IntegrationAccountType.INSTAGRAM_ACCOUNT,
-            externalId: profile.userId,
-            displayName: profile.username,
-            metadata: {},
+            externalId: account.userId,
+            displayName: account.username,
+            metadata: {
+              pageId: account.pageId,
+              pageName: account.pageName,
+              pageTasks: account.pageTasks,
+              authFlow: 'facebook_login_for_business',
+            },
             connectedAt: now,
             createdAt: now,
             updatedAt: now,
@@ -145,7 +185,7 @@ export class CompleteInstagramConnectionUseCase {
       return {
         status: 'connected',
         expertId: origin.expertId,
-        username: profile.username,
+        username: account.username,
       };
     } catch (error) {
       if (error instanceof InstagramOAuthError) {
@@ -153,7 +193,14 @@ export class CompleteInstagramConnectionUseCase {
           `Falha ao conectar Instagram do expert ${origin.expertId}: ${error.message}`,
         );
 
-        return fail('exchange_failed');
+        return fail(error.reason);
+      }
+
+      if (
+        error instanceof DomainError &&
+        error.reason === 'INSTAGRAM_ACCOUNT_ALREADY_CONNECTED'
+      ) {
+        return fail('account_already_connected');
       }
 
       throw error;

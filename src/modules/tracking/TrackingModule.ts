@@ -3,6 +3,7 @@ import type { Redis } from '@upstash/redis';
 import type { DataSource } from 'typeorm';
 import { DATA_SOURCE } from '../../infra/database/tokens';
 import { REDIS_CLIENT } from '../../shared/infra/redis/tokens';
+import { AuthModule } from '../auth/AuthModule';
 import { ExpertsModule } from '../experts/ExpertsModule';
 import { LeadsModule } from '../leads/LeadsModule';
 import { CollectEventsUseCase } from './application/collector/CollectEventsUseCase';
@@ -19,6 +20,7 @@ import { DeleteTrackingRuleUseCase } from './application/use-cases/DeleteTrackin
 import { OpenTrackingSetupUseCase } from './application/use-cases/OpenTrackingSetupUseCase';
 import { CreateTrackingPixelUseCase } from './application/use-cases/CreateTrackingPixelUseCase';
 import { GetTrackingPixelUseCase } from './application/use-cases/GetTrackingPixelUseCase';
+import { RevokeTrackingSetupUseCase } from './application/use-cases/RevokeTrackingSetupUseCase';
 import { StartTrackingSetupUseCase } from './application/use-cases/StartTrackingSetupUseCase';
 import { TRACKING_PIXELS_REPOSITORY } from './domain/repositories/TrackingPixelsRepository';
 import { TRACKING_RULES_REPOSITORY } from './domain/repositories/TrackingRulesRepository';
@@ -32,7 +34,7 @@ import { TrackerSetupController } from './presentation/controllers/TrackerSetupC
 import { TrackingController } from './presentation/controllers/TrackingController';
 
 @Module({
-  imports: [ExpertsModule, LeadsModule],
+  imports: [AuthModule, ExpertsModule, LeadsModule],
   controllers: [
     TrackingController,
     TrackerSetupController,
@@ -42,6 +44,7 @@ import { TrackingController } from './presentation/controllers/TrackingControlle
     GetTrackingPixelUseCase,
     CreateTrackingPixelUseCase,
     StartTrackingSetupUseCase,
+    RevokeTrackingSetupUseCase,
     OpenTrackingSetupUseCase,
     CreateTrackingRuleUseCase,
     DeleteTrackingRuleUseCase,

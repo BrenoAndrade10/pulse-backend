@@ -1,30 +1,56 @@
 import { Environment } from '../../../../config/Environment';
 import {
   InstagramOAuthError,
-  type InstagramLongLivedToken,
+  type InstagramAuthorizedAccount,
   type InstagramOAuthGateway,
-  type InstagramProfile,
-  type InstagramShortLivedToken,
+  type MetaUserAccessToken,
 } from '../../domain/services/InstagramOAuthGateway';
 
-const AUTHORIZE_URL = 'https://www.instagram.com/oauth/authorize';
-const TOKEN_URL = 'https://api.instagram.com/oauth/access_token';
-const GRAPH_URL = 'https://graph.instagram.com';
+const AUTHORIZE_URL = 'https://www.facebook.com/dialog/oauth';
+const GRAPH_URL = 'https://graph.facebook.com';
 const REQUEST_TIMEOUT_MS = 10_000;
+const MAX_PAGE_BATCHES = 20;
 
-type ShortLivedTokenResponse = {
+export const INSTAGRAM_REQUIRED_PERMISSIONS = [
+  'pages_show_list',
+  'pages_read_engagement',
+  'instagram_basic',
+  'instagram_manage_comments',
+  'instagram_manage_messages',
+] as const;
+
+const REQUIRED_PAGE_TASKS: ReadonlyArray<readonly [string, string]> = [
+  ['MESSAGING', 'PROFILE_PLUS_MESSAGING'],
+  ['MODERATE', 'PROFILE_PLUS_MODERATE'],
+];
+
+type PageAccount = {
+  id?: string;
+  name?: string;
   access_token?: string;
-  user_id?: string | number;
-  permissions?: string | string[];
+  tasks?: string[];
+  instagram_business_account?: { id?: string };
+};
+
+type PageAccountsResponse = {
+  data?: PageAccount[];
+  paging?: { cursors?: { after?: string } };
 };
 
 export class InstagramOAuthClient implements InstagramOAuthGateway {
   isConfigured(): boolean {
-    const { INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET, INSTAGRAM_REDIRECT_URI } =
-      Environment.vars;
+    const {
+      META_APP_ID,
+      META_APP_SECRET,
+      INSTAGRAM_CONFIG_ID,
+      INSTAGRAM_REDIRECT_URI,
+    } = Environment.vars;
 
     return Boolean(
-      INSTAGRAM_APP_ID && INSTAGRAM_APP_SECRET && INSTAGRAM_REDIRECT_URI,
+      META_APP_ID &&
+      META_APP_SECRET &&
+      INSTAGRAM_CONFIG_ID &&
+      INSTAGRAM_REDIRECT_URI,
     );
   }
 
@@ -32,64 +58,156 @@ export class InstagramOAuthClient implements InstagramOAuthGateway {
     const url = new URL(AUTHORIZE_URL);
 
     url.searchParams.set('client_id', this.config.appId);
+    url.searchParams.set('config_id', this.config.configId);
+    url.searchParams.set('display', 'popup');
     url.searchParams.set('redirect_uri', this.config.redirectUri);
     url.searchParams.set('response_type', 'code');
-    url.searchParams.set('scope', this.config.scopes);
+    url.searchParams.set('override_default_response_type', 'true');
     url.searchParams.set('state', state);
 
     return url.toString();
   }
 
-  async exchangeCode(code: string): Promise<InstagramShortLivedToken> {
-    const form = new FormData();
+  exchangeCode(code: string): Promise<MetaUserAccessToken> {
+    return this.exchangeToken({
+      grant_type: 'authorization_code',
+      client_id: this.config.appId,
+      client_secret: this.config.appSecret,
+      redirect_uri: this.config.redirectUri,
+      code,
+    });
+  }
 
-    form.set('client_id', this.config.appId);
-    form.set('client_secret', this.config.appSecret);
-    form.set('grant_type', 'authorization_code');
-    form.set('redirect_uri', this.config.redirectUri);
-    form.set('code', code);
+  exchangeForLongLivedToken(
+    shortLivedToken: string,
+  ): Promise<MetaUserAccessToken> {
+    return this.exchangeToken({
+      grant_type: 'fb_exchange_token',
+      client_id: this.config.appId,
+      client_secret: this.config.appSecret,
+      fb_exchange_token: shortLivedToken,
+    });
+  }
 
-    const payload = await this.request<
-      ShortLivedTokenResponse & { data?: ShortLivedTokenResponse[] }
-    >(TOKEN_URL, { method: 'POST', body: form });
+  async getAuthorizedAccount(
+    userAccessToken: string,
+  ): Promise<InstagramAuthorizedAccount> {
+    const permissions = await this.getGrantedPermissions(userAccessToken);
+    const missing = INSTAGRAM_REQUIRED_PERMISSIONS.filter(
+      (permission) => !permissions.includes(permission),
+    );
 
-    const token: ShortLivedTokenResponse | undefined = payload.data
-      ? payload.data[0]
-      : payload;
+    if (missing.length > 0) {
+      throw new InstagramOAuthError(
+        'missing_permissions',
+        `Permissões obrigatórias não concedidas: ${missing.join(', ')}.`,
+      );
+    }
 
-    if (!token?.access_token || token.user_id === undefined) {
-      throw new InstagramOAuthError('Resposta inesperada na troca do código.');
+    const [authorizingUser, pages] = await Promise.all([
+      this.graphGet<{ id?: string }>('/me', { fields: 'id' }, userAccessToken),
+      this.getPageAccounts(userAccessToken),
+    ]);
+    const accounts = new Map<
+      string,
+      {
+        accessToken: string;
+        pageId: string;
+        pageName: string;
+        pageTasks: string[];
+      }
+    >();
+
+    for (const page of pages) {
+      const instagramId = page.instagram_business_account?.id;
+
+      if (!page.id || !page.name || !page.access_token || !instagramId) {
+        continue;
+      }
+
+      accounts.set(instagramId, {
+        accessToken: page.access_token,
+        pageId: page.id,
+        pageName: page.name,
+        pageTasks: Array.isArray(page.tasks) ? page.tasks : [],
+      });
+    }
+
+    if (!authorizingUser.id || accounts.size === 0) {
+      throw new InstagramOAuthError(
+        'no_instagram_account',
+        'Nenhuma conta profissional vinculada a uma Página foi autorizada.',
+      );
+    }
+
+    if (accounts.size > 1) {
+      throw new InstagramOAuthError(
+        'multiple_instagram_accounts',
+        'Mais de uma conta profissional foi autorizada.',
+      );
+    }
+
+    const [userId, page] = [...accounts.entries()][0];
+    const missingTasks = REQUIRED_PAGE_TASKS.filter(
+      (alternatives) =>
+        !alternatives.some((task) => page.pageTasks.includes(task)),
+    );
+
+    if (missingTasks.length > 0) {
+      throw new InstagramOAuthError(
+        'missing_permissions',
+        `Tarefas obrigatórias da Página ausentes: ${missingTasks
+          .map(([task]) => task)
+          .join(', ')}.`,
+      );
+    }
+
+    const profile = await this.graphGet<{ id?: string; username?: string }>(
+      `/${encodeURIComponent(userId)}`,
+      { fields: 'id,username' },
+      page.accessToken,
+    );
+
+    if (profile.id !== userId || !profile.username) {
+      throw new InstagramOAuthError(
+        'exchange_failed',
+        'A Meta retornou uma conta profissional inválida.',
+      );
     }
 
     return {
-      accessToken: token.access_token,
-      appScopedUserId: String(token.user_id),
-      permissions: (Array.isArray(token.permissions)
-        ? token.permissions
-        : (token.permissions ?? '').split(',')
-      )
-        .map((permission) => permission.trim())
-        .filter(Boolean),
+      authorizingUserId: authorizingUser.id,
+      permissions,
+      accessToken: page.accessToken,
+      userId,
+      username: profile.username,
+      pageId: page.pageId,
+      pageName: page.pageName,
+      pageTasks: page.pageTasks,
     };
   }
 
-  async exchangeForLongLivedToken(
-    shortLivedToken: string,
-  ): Promise<InstagramLongLivedToken> {
-    const url = new URL(`${GRAPH_URL}/access_token`);
-
-    url.searchParams.set('grant_type', 'ig_exchange_token');
-    url.searchParams.set('client_secret', this.config.appSecret);
-    url.searchParams.set('access_token', shortLivedToken);
-
+  private async exchangeToken(
+    fields: Record<string, string>,
+  ): Promise<MetaUserAccessToken> {
+    const form = new URLSearchParams(fields);
     const payload = await this.request<{
       access_token?: string;
       expires_in?: number;
-    }>(url.toString(), { method: 'GET' });
+    }>(`${this.graphBaseUrl}/oauth/access_token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form,
+    });
 
-    if (!payload.access_token || typeof payload.expires_in !== 'number') {
+    if (
+      !payload.access_token ||
+      typeof payload.expires_in !== 'number' ||
+      payload.expires_in <= 0
+    ) {
       throw new InstagramOAuthError(
-        'Resposta inesperada na troca por token de longa duração.',
+        'exchange_failed',
+        'Resposta inesperada na troca do código.',
       );
     }
 
@@ -99,37 +217,83 @@ export class InstagramOAuthClient implements InstagramOAuthGateway {
     };
   }
 
-  async getProfile(accessToken: string): Promise<InstagramProfile> {
-    const url = new URL(`${GRAPH_URL}/${this.config.apiVersion}/me`);
+  private async getGrantedPermissions(accessToken: string): Promise<string[]> {
+    const payload = await this.graphGet<{
+      data?: Array<{ permission?: string; status?: string }>;
+    }>('/me/permissions', {}, accessToken);
 
-    url.searchParams.set('fields', 'user_id,username');
-    url.searchParams.set('access_token', accessToken);
+    return (payload.data ?? [])
+      .filter((item) => item.status === 'granted')
+      .map((item) => item.permission)
+      .filter((permission): permission is string => Boolean(permission));
+  }
 
-    const payload = await this.request<{
-      user_id?: string | number;
-      username?: string;
-    }>(url.toString(), { method: 'GET' });
+  private async getPageAccounts(accessToken: string): Promise<PageAccount[]> {
+    const pages: PageAccount[] = [];
+    let after: string | undefined;
 
-    if (payload.user_id === undefined || !payload.username) {
-      throw new InstagramOAuthError('Resposta inesperada ao buscar o perfil.');
+    for (let batch = 0; batch < MAX_PAGE_BATCHES; batch += 1) {
+      const response = await this.graphGet<PageAccountsResponse>(
+        '/me/accounts',
+        {
+          fields: 'id,name,access_token,tasks,instagram_business_account{id}',
+          ...(after ? { after } : {}),
+        },
+        accessToken,
+      );
+
+      pages.push(...(response.data ?? []));
+      after = response.paging?.cursors?.after;
+      if (!after) break;
     }
 
-    return { userId: String(payload.user_id), username: payload.username };
+    if (after) {
+      throw new InstagramOAuthError(
+        'exchange_failed',
+        'A Meta retornou mais Páginas do que foi possível validar.',
+      );
+    }
+
+    return pages;
+  }
+
+  private graphGet<T>(
+    path: string,
+    params: Record<string, string>,
+    accessToken: string,
+  ): Promise<T> {
+    const url = new URL(`${this.graphBaseUrl}${path}`);
+
+    Object.entries(params).forEach(([key, value]) => {
+      url.searchParams.set(key, value);
+    });
+
+    return this.request<T>(url.toString(), {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+  }
+
+  private get graphBaseUrl(): string {
+    return `${GRAPH_URL}/${this.config.apiVersion}`;
   }
 
   private get config() {
     if (!this.isConfigured()) {
-      throw new InstagramOAuthError('Login com Instagram não configurado.');
+      throw new InstagramOAuthError(
+        'exchange_failed',
+        'Login unificado da Meta não configurado.',
+      );
     }
 
     const vars = Environment.vars;
 
     return {
-      appId: vars.INSTAGRAM_APP_ID!,
-      appSecret: vars.INSTAGRAM_APP_SECRET!,
+      appId: vars.META_APP_ID!,
+      appSecret: vars.META_APP_SECRET!,
+      configId: vars.INSTAGRAM_CONFIG_ID!,
       redirectUri: vars.INSTAGRAM_REDIRECT_URI!,
-      scopes: vars.INSTAGRAM_SCOPES,
-      apiVersion: vars.INSTAGRAM_GRAPH_API_VERSION,
+      apiVersion: vars.META_GRAPH_API_VERSION,
     };
   }
 
@@ -142,29 +306,31 @@ export class InstagramOAuthClient implements InstagramOAuthGateway {
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch {
-      throw new InstagramOAuthError('Falha de rede ao chamar a Meta.');
+      throw new InstagramOAuthError(
+        'exchange_failed',
+        'Falha de rede ao chamar a Meta.',
+      );
     }
 
     const payload: unknown = await response.json().catch(() => null);
 
     if (!response.ok) {
+      const code = this.extractErrorCode(payload);
       throw new InstagramOAuthError(
-        `Meta respondeu ${response.status}: ${this.extractErrorMessage(payload)}`,
+        'exchange_failed',
+        `Meta respondeu ${response.status}${code ? ` (código ${code})` : ''}.`,
       );
     }
 
     return (payload ?? {}) as T;
   }
 
-  private extractErrorMessage(payload: unknown): string {
-    if (!payload || typeof payload !== 'object') return 'sem detalhes';
+  private extractErrorCode(payload: unknown): string | null {
+    if (!payload || typeof payload !== 'object') return null;
 
-    const body = payload as {
-      error_message?: unknown;
-      error?: { message?: unknown };
-    };
-    const message = body.error_message ?? body.error?.message;
-
-    return typeof message === 'string' ? message : 'sem detalhes';
+    const code = (payload as { error?: { code?: unknown } }).error?.code;
+    return typeof code === 'number' || typeof code === 'string'
+      ? String(code)
+      : null;
   }
 }

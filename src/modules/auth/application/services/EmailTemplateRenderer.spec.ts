@@ -14,15 +14,38 @@ describe('EmailTemplateRenderer', () => {
     expect(result.text).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
   });
 
+  it('uses the Pulse logo as an inline image in the header', () => {
+    const result = new EmailTemplateRenderer().render('login-code', {
+      title: 'Seu código de acesso',
+      code: '123456',
+      validMinutes: 10,
+      context: 'Chrome',
+    });
+
+    expect(result.html).toContain("src='cid:pulse-logo'");
+    expect(result.inlineImages).toHaveLength(1);
+    expect(result.inlineImages[0]).toMatchObject({
+      contentId: 'pulse-logo',
+      contentType: 'image/png',
+    });
+    expect(
+      Buffer.from(result.inlineImages[0].base64, 'base64')
+        .subarray(0, 4)
+        .toString('hex'),
+    ).toBe('89504e47');
+  });
+
   it('renders the login code and security guidance', () => {
     const result = new EmailTemplateRenderer().render('login-code', {
       title: 'Seu código de acesso',
       code: '123456',
       validMinutes: 10,
-      context: 'Chrome · 192.0.2.x',
+      context: 'Chrome',
     });
 
     expect(result.html).toContain('123456');
+    expect(result.html).toContain('Chrome.');
+    expect(result.html).not.toMatch(/\d+\.\d+\.\d+\.(x|\d+)/);
     expect(result.text.replace(/\s+/g, ' ')).toContain('válido por 10 minutos');
     expect(result.text).toContain('troque sua senha imediatamente');
   });

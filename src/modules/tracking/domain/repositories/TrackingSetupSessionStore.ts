@@ -8,7 +8,9 @@ export type TrackingSetupSession = {
   expertId: string;
   pixelId: string;
   userId: string;
+  authSessionId: string;
   url: string;
+  createdAt: string;
 };
 
 export interface TrackingSetupSessionStore {
@@ -22,4 +24,5 @@ export interface TrackingSetupSessionStore {
     token: string,
     ttlSeconds: number,
   ): Promise<TrackingSetupSession | null>;
+  revokeByPixel(pixelId: string): Promise<void>;
 }

@@ -118,7 +118,7 @@ export class LoginUseCase {
     });
 
     try {
-      await this.sendLoginCode(user.email, code, input.userAgent, input.ip);
+      await this.sendLoginCode(user.email, code, input.userAgent);
     } catch {
       await this.challenges
         .discard(challenge.challengeToken)
@@ -157,13 +157,12 @@ export class LoginUseCase {
     email: string,
     code: string,
     userAgent: string | null,
-    ip: string | null,
   ): Promise<void> {
     const rendered = this.emailTemplates.render('login-code', {
       title: 'Seu código de acesso',
       code,
       validMinutes: 10,
-      context: `${this.browser(userAgent)} · ${this.approximateIp(ip)}`,
+      context: this.browser(userAgent),
     });
 
     return this.emailSender.send({
@@ -180,14 +179,5 @@ export class LoginUseCase {
     if (/Chrome\//.test(value)) return 'Chrome';
     if (/Safari\//.test(value)) return 'Safari';
     return 'Navegador desconhecido';
-  }
-
-  private approximateIp(ip: string | null): string {
-    if (!ip) return 'IP desconhecido';
-    if (ip.includes(':')) return `${ip.split(':').slice(0, 3).join(':')}:…`;
-    const parts = ip.split('.');
-    return parts.length === 4
-      ? `${parts.slice(0, 3).join('.')}.x`
-      : 'IP desconhecido';
   }
 }

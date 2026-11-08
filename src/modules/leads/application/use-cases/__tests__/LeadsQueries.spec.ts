@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { Environment } from '../../../../../config/Environment';
 import type { AccessTokenClaims } from '../../../../auth/domain/types/AccessTokenClaims';
 import type { ExpertsRepository } from '../../../../experts/domain/repositories/ExpertsRepository';
+import type { LaunchesRepository } from '../../../../launches/domain/repositories/LaunchesRepository';
 import { UserRole } from '../../../../users/domain/enums/UserRole';
 import type {
   LeadRow,
@@ -24,6 +25,7 @@ describe('leads queries', () => {
   const cipher = new LeadEncryptionService();
   let experts: jest.Mocked<ExpertsRepository>;
   let leads: jest.Mocked<LeadsRepository>;
+  let launches: jest.Mocked<LaunchesRepository>;
 
   const makeRow = (
     index: number,
@@ -74,6 +76,24 @@ describe('leads queries', () => {
       findByTenantId: jest.fn(),
       deleteByTenantIdAndId: jest.fn(),
     };
+    launches = {
+      create: jest.fn(),
+      save: jest.fn(),
+      findByTenantIdAndId: jest
+        .fn()
+        .mockImplementation((tenantId: string, id: string) =>
+          Promise.resolve(
+            id === 'launch-a' && tenantId === 'tenant-a'
+              ? ({ id, tenantId, expertId: 'expert-a' } as never)
+              : id === 'launch-b'
+                ? ({ id, tenantId, expertId: 'expert-b' } as never)
+                : null,
+          ),
+        ),
+      findByTenantId: jest.fn(),
+      findByTenantIdAndExpertId: jest.fn(),
+      softDeleteByTenantIdAndId: jest.fn(),
+    };
     leads = {
       recordSubmission: jest.fn(),
       list: jest.fn().mockResolvedValue([]),
@@ -87,7 +107,29 @@ describe('leads queries', () => {
   });
 
   describe('ListLeadsUseCase', () => {
-    const useCase = () => new ListLeadsUseCase(experts, leads, cipher);
+    const useCase = () =>
+      new ListLeadsUseCase(experts, leads, cipher, launches);
+
+    it.each(['launch-b', 'launch-missing'])(
+      'rejects the launch %s that is not from the expert',
+      async (launchId) => {
+        await expect(
+          useCase().execute({ expertId: 'expert-a', launchId }, auth),
+        ).rejects.toThrow('LAUNCH_NOT_FOUND');
+        expect(leads.list).not.toHaveBeenCalled();
+      },
+    );
+
+    it('filters by a launch of the expert', async () => {
+      await useCase().execute(
+        { expertId: 'expert-a', launchId: 'launch-a' },
+        auth,
+      );
+
+      expect(leads.list).toHaveBeenCalledWith(
+        expect.objectContaining({ launchId: 'launch-a' }),
+      );
+    });
 
     it('decrypts the page and points to the next one', async () => {
       leads.list.mockResolvedValue([makeRow(1), makeRow(2), makeRow(3)]);
@@ -159,7 +201,8 @@ describe('leads queries', () => {
 
   describe('ExportLeadsUseCase', () => {
     const links = new LeadExportLinks();
-    const useCase = () => new ExportLeadsUseCase(experts, leads, cipher, links);
+    const useCase = () =>
+      new ExportLeadsUseCase(experts, leads, cipher, links, launches);
     const collect = async (generator: AsyncGenerator<string>) => {
       let csv = '';
       for await (const chunk of generator) csv += chunk;
@@ -206,6 +249,15 @@ describe('leads queries', () => {
       expect(leads.list).toHaveBeenLastCalledWith(
         expect.objectContaining({ after: firstBatch[499].cursor }),
       );
+    });
+
+    it('does not sign a link for a launch of another expert', async () => {
+      await expect(
+        useCase().createLink(
+          { expertId: 'expert-a', launchId: 'launch-b' },
+          auth,
+        ),
+      ).rejects.toThrow('LAUNCH_NOT_FOUND');
     });
 
     it('signs a short-lived link only for the experts of the tenant', async () => {

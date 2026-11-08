@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import type { IdGenerator } from '../../../../../shared/domain/IdGenerator';
+import { DomainError } from '../../../../../shared/errors/DomainError';
 import type { AccessTokenClaims } from '../../../../auth/domain/types/AccessTokenClaims';
 import { Expert } from '../../../../experts/domain/entities/Expert';
 import { ExpertStatus } from '../../../../experts/domain/enums/ExpertStatus';
@@ -66,6 +67,59 @@ describe('Launch use cases', () => {
     expect(launch.version).toBe(1);
   });
 
+  it('generates a slug without accents from the launch name', async () => {
+    const useCase = new CreateLaunchUseCase(launches, experts, ids);
+
+    const launch = await useCase.execute(
+      { expertId: 'expert-a', name: 'Imersão São João' },
+      admin,
+    );
+
+    expect(launch.slug).toBe('imersao-sao-joao');
+  });
+
+  it('uses the fallback when the generated slug is too short', async () => {
+    const useCase = new CreateLaunchUseCase(launches, experts, ids);
+
+    const launch = await useCase.execute(
+      { expertId: 'expert-a', name: 'A!' },
+      admin,
+    );
+
+    expect(launch.slug).toBe('lancamento');
+  });
+
+  it('retries a generated slug conflict with a numeric suffix', async () => {
+    launches.create
+      .mockRejectedValueOnce(slugConflict())
+      .mockImplementationOnce((launch) => Promise.resolve(launch));
+    const useCase = new CreateLaunchUseCase(launches, experts, ids);
+
+    const launch = await useCase.execute(
+      { expertId: 'expert-a', name: 'Lançamento Especial' },
+      admin,
+    );
+
+    expect(launch.slug).toBe('lancamento-especial-2');
+    expect(launches.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the conflict when the client provides the slug', async () => {
+    launches.create.mockRejectedValueOnce(slugConflict());
+    const useCase = new CreateLaunchUseCase(launches, experts, ids);
+
+    await expect(
+      useCase.execute(
+        { expertId: 'expert-a', slug: 'slug-informado', name: 'Launch' },
+        admin,
+      ),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      reason: 'LAUNCH_SLUG_ALREADY_EXISTS',
+    });
+    expect(launches.create).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects an expert from another tenant', async () => {
     experts.findByTenantIdAndId.mockResolvedValue(null);
     const useCase = new CreateLaunchUseCase(launches, experts, ids);
@@ -115,6 +169,10 @@ describe('Launch use cases', () => {
     );
   });
 });
+
+function slugConflict(): DomainError {
+  return new DomainError(409, 'LAUNCH_SLUG_ALREADY_EXISTS');
+}
 
 function makeExpert(): Expert {
   const now = new Date();

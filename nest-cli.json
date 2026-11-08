@@ -4,6 +4,9 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "deleteOutDir": true,
-    "assets": ["modules/auth/application/services/templates/**/*.hbs"]
+    "assets": [
+      "modules/auth/application/services/templates/**/*.hbs",
+      "modules/auth/application/services/templates/**/*.png"
+    ]
   }
 }

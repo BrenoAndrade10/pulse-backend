@@ -1,6 +1,9 @@
 import { Environment } from '../../../../config/Environment';
 import { InstagramOAuthError } from '../../domain/services/InstagramOAuthGateway';
-import { InstagramOAuthClient } from './InstagramOAuthClient';
+import {
+  INSTAGRAM_REQUIRED_PERMISSIONS,
+  InstagramOAuthClient,
+} from './InstagramOAuthClient';
 
 const SECRET = 'app-secret-value';
 
@@ -11,17 +14,24 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+const grantedPermissions = () => ({
+  data: INSTAGRAM_REQUIRED_PERMISSIONS.map((permission) => ({
+    permission,
+    status: 'granted',
+  })),
+});
+
 describe('InstagramOAuthClient', () => {
   const client = new InstagramOAuthClient();
-  let fetchMock: jest.SpyInstance;
+  let fetchMock: jest.SpiedFunction<typeof fetch>;
 
   beforeEach(() => {
     Environment.vars = {
-      INSTAGRAM_APP_ID: '990602627938098',
-      INSTAGRAM_APP_SECRET: SECRET,
+      META_APP_ID: '990602627938098',
+      META_APP_SECRET: SECRET,
+      META_GRAPH_API_VERSION: 'v25.0',
+      INSTAGRAM_CONFIG_ID: '1886441355699639',
       INSTAGRAM_REDIRECT_URI: 'https://api.example.com/meta/instagram/callback',
-      INSTAGRAM_SCOPES: 'instagram_business_basic',
-      INSTAGRAM_GRAPH_API_VERSION: 'v25.0',
     } as typeof Environment.vars;
     fetchMock = jest.spyOn(global, 'fetch');
   });
@@ -30,69 +40,196 @@ describe('InstagramOAuthClient', () => {
     fetchMock.mockRestore();
   });
 
-  it('builds the authorization URL with the registered redirect URI', () => {
+  it('builds Facebook Login for Business without legacy Instagram scopes', () => {
     const url = new URL(client.buildAuthorizationUrl('state-123'));
 
     expect(url.origin + url.pathname).toBe(
-      'https://www.instagram.com/oauth/authorize',
+      'https://www.facebook.com/dialog/oauth',
     );
     expect(Object.fromEntries(url.searchParams)).toEqual({
       client_id: '990602627938098',
+      config_id: '1886441355699639',
+      display: 'popup',
       redirect_uri: 'https://api.example.com/meta/instagram/callback',
       response_type: 'code',
-      scope: 'instagram_business_basic',
+      override_default_response_type: 'true',
       state: 'state-123',
     });
+    expect(url.searchParams.has('scope')).toBe(false);
   });
 
-  it('exchanges the code with a form POST and reads the data[] response', async () => {
+  it('exchanges the code with the Facebook Graph endpoint and a form body', async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({
-        data: [
-          {
-            access_token: 'short',
-            user_id: 111,
-            permissions:
-              'instagram_business_basic,instagram_business_manage_comments',
-          },
-        ],
-      }),
+      jsonResponse({ access_token: 'short', expires_in: 3600 }),
     );
 
     await expect(client.exchangeCode('the-code')).resolves.toEqual({
       accessToken: 'short',
-      appScopedUserId: '111',
-      permissions: [
-        'instagram_business_basic',
-        'instagram_business_manage_comments',
-      ],
+      expiresInSeconds: 3600,
     });
 
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const form = init.body as FormData;
-    expect(url).toBe('https://api.instagram.com/oauth/access_token');
+    const [rawUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const url = new URL(rawUrl);
+    const form = init.body as URLSearchParams;
+
+    expect(url.toString()).toBe(
+      'https://graph.facebook.com/v25.0/oauth/access_token',
+    );
     expect(init.method).toBe('POST');
     expect(form.get('grant_type')).toBe('authorization_code');
+    expect(form.get('client_id')).toBe('990602627938098');
+    expect(form.get('client_secret')).toBe(SECRET);
     expect(form.get('code')).toBe('the-code');
     expect(form.get('redirect_uri')).toBe(
       'https://api.example.com/meta/instagram/callback',
     );
+    expect(rawUrl).not.toContain(SECRET);
+    expect(rawUrl).not.toContain('the-code');
   });
 
-  it('also accepts the legacy flat token response', async () => {
+  it('exchanges a short-lived user token without putting it in the URL', async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({ access_token: 'short', user_id: '111', permissions: [] }),
+      jsonResponse({ access_token: 'long', expires_in: 5_184_000 }),
     );
 
-    await expect(client.exchangeCode('c')).resolves.toMatchObject({
-      accessToken: 'short',
-      appScopedUserId: '111',
+    await expect(client.exchangeForLongLivedToken('short')).resolves.toEqual({
+      accessToken: 'long',
+      expiresInSeconds: 5_184_000,
     });
+
+    const [rawUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const form = init.body as URLSearchParams;
+
+    expect(form.get('grant_type')).toBe('fb_exchange_token');
+    expect(form.get('fb_exchange_token')).toBe('short');
+    expect(rawUrl).not.toContain('short');
   });
 
-  it('never leaks secrets or tokens in error messages', async () => {
+  it('validates permissions and resolves the authorized Instagram account through Pages', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(grantedPermissions()))
+      .mockResolvedValueOnce(jsonResponse({ id: 'facebook-user' }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 'page-1',
+              name: 'Page One',
+              access_token: 'page-token',
+              tasks: ['PROFILE_PLUS_MESSAGING', 'PROFILE_PLUS_MODERATE'],
+              instagram_business_account: { id: 'ig-1' },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ id: 'ig-1', username: 'carlaexpert' }),
+      );
+
+    await expect(client.getAuthorizedAccount('user-token')).resolves.toEqual({
+      authorizingUserId: 'facebook-user',
+      permissions: [...INSTAGRAM_REQUIRED_PERMISSIONS],
+      accessToken: 'page-token',
+      userId: 'ig-1',
+      username: 'carlaexpert',
+      pageId: 'page-1',
+      pageName: 'Page One',
+      pageTasks: ['PROFILE_PLUS_MESSAGING', 'PROFILE_PLUS_MODERATE'],
+    });
+
+    for (const [rawUrl, init] of fetchMock.mock.calls) {
+      const url = new URL(rawUrl as string);
+      const headers = (init as RequestInit).headers as Record<string, string>;
+      expect(url.searchParams.has('access_token')).toBe(false);
+      expect(headers.Authorization).toMatch(/^Bearer /);
+    }
+  });
+
+  it('rejects when the configuration did not grant every required permission', async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({ error_message: 'Invalid authorization code' }, 400),
+      jsonResponse({
+        data: [
+          { permission: 'instagram_basic', status: 'granted' },
+          { permission: 'pages_show_list', status: 'declined' },
+        ],
+      }),
+    );
+
+    await expect(client.getAuthorizedAccount('user-token')).rejects.toEqual(
+      expect.objectContaining({ reason: 'missing_permissions' }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an account when the user lacks required Page tasks', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(grantedPermissions()))
+      .mockResolvedValueOnce(jsonResponse({ id: 'facebook-user' }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            {
+              id: 'page-1',
+              name: 'Page One',
+              access_token: 'page-token',
+              tasks: ['MODERATE'],
+              instagram_business_account: { id: 'ig-1' },
+            },
+          ],
+        }),
+      );
+
+    await expect(client.getAuthorizedAccount('user-token')).rejects.toEqual(
+      expect.objectContaining({ reason: 'missing_permissions' }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('rejects zero or multiple professional accounts instead of guessing', async () => {
+    const run = async (data: unknown[]) => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(grantedPermissions()))
+        .mockResolvedValueOnce(jsonResponse({ id: 'facebook-user' }))
+        .mockResolvedValueOnce(jsonResponse({ data }));
+
+      return client.getAuthorizedAccount('user-token');
+    };
+
+    await expect(run([])).rejects.toEqual(
+      expect.objectContaining({ reason: 'no_instagram_account' }),
+    );
+    fetchMock.mockReset();
+    await expect(
+      run([
+        {
+          id: 'page-1',
+          name: 'One',
+          access_token: 'page-1-token',
+          instagram_business_account: { id: 'ig-1' },
+        },
+        {
+          id: 'page-2',
+          name: 'Two',
+          access_token: 'page-2-token',
+          instagram_business_account: { id: 'ig-2' },
+        },
+      ]),
+    ).rejects.toEqual(
+      expect.objectContaining({ reason: 'multiple_instagram_accounts' }),
+    );
+  });
+
+  it('never leaks secrets or tokens in provider errors', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        {
+          error: {
+            code: 100,
+            message: `Invalid ${SECRET} very-secret-token`,
+          },
+        },
+        400,
+      ),
     );
 
     const error = (await client
@@ -100,28 +237,13 @@ describe('InstagramOAuthClient', () => {
       .catch((caught: unknown) => caught)) as Error;
 
     expect(error).toBeInstanceOf(InstagramOAuthError);
-    expect(error.message).toContain('Invalid authorization code');
+    expect(error.message).toContain('Meta respondeu 400');
     expect(error.message).not.toContain(SECRET);
     expect(error.message).not.toContain('very-secret-token');
   });
 
-  it('reads the profile from the versioned /me endpoint', async () => {
-    fetchMock.mockResolvedValue(
-      jsonResponse({ user_id: 178414, username: 'carlaexpert' }),
-    );
-
-    await expect(client.getProfile('long')).resolves.toEqual({
-      userId: '178414',
-      username: 'carlaexpert',
-    });
-
-    const url = new URL((fetchMock.mock.calls[0] as [string])[0]);
-    expect(url.pathname).toBe('/v25.0/me');
-    expect(url.searchParams.get('fields')).toBe('user_id,username');
-  });
-
-  it('reports itself as not configured when credentials are missing', () => {
-    Environment.vars.INSTAGRAM_APP_SECRET = undefined;
+  it('reports itself as not configured when unified login data is missing', () => {
+    Environment.vars.INSTAGRAM_CONFIG_ID = undefined;
 
     expect(client.isConfigured()).toBe(false);
     expect(() => client.buildAuthorizationUrl('s')).toThrow(

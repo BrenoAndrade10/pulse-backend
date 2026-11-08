@@ -76,7 +76,6 @@ import { EmailChallengeUseCase } from './application/use-cases/challenge/EmailCh
               audience: Environment.vars.JWT_AUDIENCE,
             },
             verifyOptions: {
-              // Algoritmo fixo: impede ataques de troca de algoritmo ("none").
               algorithms: ['HS256'],
               issuer: Environment.vars.JWT_ISSUER,
               audience: Environment.vars.JWT_AUDIENCE,
@@ -106,5 +105,6 @@ import { EmailChallengeUseCase } from './application/use-cases/challenge/EmailCh
       useClass: AccessTokenGuard,
     },
   ],
+  exports: [SESSIONS_REPOSITORY],
 })
 export class AuthModule {}

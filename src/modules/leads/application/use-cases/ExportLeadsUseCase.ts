@@ -2,6 +2,8 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { AccessTokenClaims } from '../../../auth/domain/types/AccessTokenClaims';
 import { EXPERTS_REPOSITORY } from '../../../experts/domain/repositories/ExpertsRepository';
 import type { ExpertsRepository } from '../../../experts/domain/repositories/ExpertsRepository';
+import { LAUNCHES_REPOSITORY } from '../../../launches/domain/repositories/LaunchesRepository';
+import type { LaunchesRepository } from '../../../launches/domain/repositories/LaunchesRepository';
 import { LEADS_REPOSITORY } from '../../domain/repositories/LeadsRepository';
 import type {
   LeadCursor,
@@ -12,6 +14,7 @@ import type { LeadCipher } from '../../domain/services/LeadCipher';
 import type { LeadExportGrant } from '../../infra/export/LeadExportLinks';
 import { LeadExportLinks } from '../../infra/export/LeadExportLinks';
 import { toLeadView, type LeadView } from '../leadView';
+import { requireExpertLaunch } from '../requireExpertLaunch';
 import { requireExpertTenant } from '../requireExpertTenant';
 
 const BATCH_SIZE = 500;
@@ -52,6 +55,9 @@ export class ExportLeadsUseCase {
     private readonly cipher: LeadCipher,
 
     private readonly links: LeadExportLinks,
+
+    @Inject(LAUNCHES_REPOSITORY)
+    private readonly launches: LaunchesRepository,
   ) {}
 
   /** Link assinado para o navegador baixar o CSV do filtro atual. */
@@ -63,6 +69,12 @@ export class ExportLeadsUseCase {
       this.experts,
       input.expertId,
       auth,
+    );
+    await requireExpertLaunch(
+      this.launches,
+      tenantId,
+      input.expertId,
+      input.launchId,
     );
     this.cipher.assertConfigured();
 

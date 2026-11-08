@@ -284,6 +284,12 @@ describe('Tracking (e2e)', () => {
           return Promise.resolve();
         },
         touch: (key: string) => Promise.resolve(sessions.get(key) ?? null),
+        revokeByPixel: (pixelId: string) => {
+          for (const [key, session] of sessions) {
+            if (session.pixelId === pixelId) sessions.delete(key);
+          }
+          return Promise.resolve();
+        },
       })
       .compile();
 

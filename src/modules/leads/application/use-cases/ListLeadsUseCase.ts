@@ -3,6 +3,8 @@ import { DomainError } from '../../../../shared/errors/DomainError';
 import type { AccessTokenClaims } from '../../../auth/domain/types/AccessTokenClaims';
 import { EXPERTS_REPOSITORY } from '../../../experts/domain/repositories/ExpertsRepository';
 import type { ExpertsRepository } from '../../../experts/domain/repositories/ExpertsRepository';
+import { LAUNCHES_REPOSITORY } from '../../../launches/domain/repositories/LaunchesRepository';
+import type { LaunchesRepository } from '../../../launches/domain/repositories/LaunchesRepository';
 import { LEADS_REPOSITORY } from '../../domain/repositories/LeadsRepository';
 import type {
   LeadCursor,
@@ -15,6 +17,7 @@ import {
   normalizePhone,
 } from '../../domain/services/leadValues';
 import { searchHashes, toLeadView, type LeadView } from '../leadView';
+import { requireExpertLaunch } from '../requireExpertLaunch';
 import { requireExpertTenant } from '../requireExpertTenant';
 
 export const MAX_LEADS_PAGE = 100;
@@ -45,6 +48,9 @@ export class ListLeadsUseCase {
 
     @Inject(LEAD_CIPHER)
     private readonly cipher: LeadCipher,
+
+    @Inject(LAUNCHES_REPOSITORY)
+    private readonly launches: LaunchesRepository,
   ) {}
 
   async execute(
@@ -55,6 +61,12 @@ export class ListLeadsUseCase {
       this.experts,
       input.expertId,
       auth,
+    );
+    await requireExpertLaunch(
+      this.launches,
+      tenantId,
+      input.expertId,
+      input.launchId,
     );
     this.cipher.assertConfigured();
 

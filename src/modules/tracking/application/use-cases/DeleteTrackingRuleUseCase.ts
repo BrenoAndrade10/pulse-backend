@@ -3,6 +3,8 @@ import { TRACKING_RULES_REPOSITORY } from '../../domain/repositories/TrackingRul
 import type { TrackingRulesRepository } from '../../domain/repositories/TrackingRulesRepository';
 import { TRACKING_SETUP_SESSION_STORE } from '../../domain/repositories/TrackingSetupSessionStore';
 import type { TrackingSetupSessionStore } from '../../domain/repositories/TrackingSetupSessionStore';
+import { SESSIONS_REPOSITORY } from '../../../auth/domain/repositories/SessionsRepository';
+import type { SessionsRepository } from '../../../auth/domain/repositories/SessionsRepository';
 import { resolveSetupSession } from '../resolveSetupSession';
 
 /** Só remove regras do pixel da sessão. Idempotente. */
@@ -11,6 +13,9 @@ export class DeleteTrackingRuleUseCase {
   constructor(
     @Inject(TRACKING_SETUP_SESSION_STORE)
     private readonly sessions: TrackingSetupSessionStore,
+
+    @Inject(SESSIONS_REPOSITORY)
+    private readonly logins: Pick<SessionsRepository, 'exists'>,
 
     @Inject(TRACKING_RULES_REPOSITORY)
     private readonly rules: TrackingRulesRepository,
@@ -23,6 +28,7 @@ export class DeleteTrackingRuleUseCase {
   }): Promise<void> {
     const session = await resolveSetupSession(
       this.sessions,
+      this.logins,
       input.token,
       input.origin,
     );

@@ -69,7 +69,9 @@ export class StartTrackingSetupUseCase {
         expertId: input.expertId,
         pixelId: pixel.id,
         userId: auth.userId,
+        authSessionId: auth.sessionId,
         url: page.url,
+        createdAt: new Date().toISOString(),
       },
       SETUP_SESSION_TTL_SECONDS,
     );

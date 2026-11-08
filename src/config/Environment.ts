@@ -28,14 +28,10 @@ export class Environment {
 
     INSTAGRAM_APP_ID: yup.string().optional(),
     INSTAGRAM_APP_SECRET: yup.string().optional(),
+    INSTAGRAM_CONFIG_ID: yup.string().optional(),
     INSTAGRAM_REDIRECT_URI: yup.string().optional(),
-    INSTAGRAM_SCOPES: yup
-      .string()
-      .optional()
-      .default(
-        'instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages',
-      ),
-    INSTAGRAM_GRAPH_API_VERSION: yup.string().optional().default('v25.0'),
+    INSTAGRAM_SCOPES: yup.string().optional(),
+    INSTAGRAM_GRAPH_API_VERSION: yup.string().optional(),
 
     FRONTEND_URL: yup.string().optional().default('http://localhost:5173'),
     RESEND_API_KEY: yup.string().optional(),

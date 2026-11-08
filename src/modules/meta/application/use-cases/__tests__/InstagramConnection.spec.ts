@@ -5,11 +5,12 @@ import { UuidV7IdGenerator } from '../../../../../shared/infra/ids/UuidV7IdGener
 import { Expert } from '../../../../experts/domain/entities/Expert';
 import { ExpertStatus } from '../../../../experts/domain/enums/ExpertStatus';
 import type { ExpertsRepository } from '../../../../experts/domain/repositories/ExpertsRepository';
-import type { IntegrationAccount } from '../../../../integrations/domain/entities/IntegrationAccount';
+import { IntegrationAccount } from '../../../../integrations/domain/entities/IntegrationAccount';
 import type { IntegrationCredential } from '../../../../integrations/domain/entities/IntegrationCredential';
 import { IntegrationAccountType } from '../../../../integrations/domain/enums/IntegrationAccountType';
 import { IntegrationCredentialStatus } from '../../../../integrations/domain/enums/IntegrationCredentialStatus';
 import { IntegrationProvider } from '../../../../integrations/domain/enums/IntegrationProvider';
+import type { IntegrationAccountsRepository } from '../../../../integrations/domain/repositories/IntegrationAccountsRepository';
 import type { IntegrationCredentialsRepository } from '../../../../integrations/domain/repositories/IntegrationCredentialsRepository';
 import { IntegrationTokenEncryptionService } from '../../../../integrations/infra/crypto/IntegrationTokenEncryptionService';
 import type {
@@ -46,12 +47,92 @@ class InMemoryExpertsRepository implements ExpertsRepository {
     return Promise.resolve(expert);
   }
 
+  save(expert: Expert): Promise<Expert> {
+    const index = this.experts.findIndex((item) => item.id === expert.id);
+    if (index >= 0) this.experts[index] = expert;
+    return Promise.resolve(expert);
+  }
+
   findById(id: string): Promise<Expert | null> {
     return Promise.resolve(this.experts.find((e) => e.id === id) ?? null);
   }
 
+  findByTenantIdAndId(tenantId: string, id: string): Promise<Expert | null> {
+    return Promise.resolve(
+      this.experts.find(
+        (expert) => expert.tenantId === tenantId && expert.id === id,
+      ) ?? null,
+    );
+  }
+
+  findByTenantIdAndEmail(
+    tenantId: string,
+    email: string,
+  ): Promise<Expert | null> {
+    return Promise.resolve(
+      this.experts.find(
+        (expert) => expert.tenantId === tenantId && expert.email === email,
+      ) ?? null,
+    );
+  }
+
   findByTenantId(tenantId: string): Promise<Expert[]> {
     return Promise.resolve(this.experts.filter((e) => e.tenantId === tenantId));
+  }
+
+  deleteByTenantIdAndId(tenantId: string, id: string): Promise<boolean> {
+    const index = this.experts.findIndex(
+      (expert) => expert.tenantId === tenantId && expert.id === id,
+    );
+    if (index < 0) return Promise.resolve(false);
+    this.experts.splice(index, 1);
+    return Promise.resolve(true);
+  }
+}
+
+class InMemoryAccountsRepository implements IntegrationAccountsRepository {
+  readonly accounts: IntegrationAccount[] = [];
+
+  findConnectedByExpert(
+    tenantId: string,
+    expertId: string,
+    provider: IntegrationProvider,
+  ): Promise<IntegrationAccount[]> {
+    return Promise.resolve(
+      this.accounts.filter(
+        (account) =>
+          account.tenantId === tenantId &&
+          account.expertId === expertId &&
+          account.provider === provider,
+      ),
+    );
+  }
+
+  findConnectedByTenant(
+    tenantId: string,
+    provider: IntegrationProvider,
+  ): Promise<IntegrationAccount[]> {
+    return Promise.resolve(
+      this.accounts.filter(
+        (account) =>
+          account.tenantId === tenantId && account.provider === provider,
+      ),
+    );
+  }
+
+  findConnectedByExternalId(
+    provider: IntegrationProvider,
+    type: IntegrationAccountType,
+    externalId: string,
+  ): Promise<IntegrationAccount[]> {
+    return Promise.resolve(
+      this.accounts.filter(
+        (account) =>
+          account.provider === provider &&
+          account.type === type &&
+          account.externalId === externalId,
+      ),
+    );
   }
 }
 
@@ -87,19 +168,31 @@ function fakeGateway(
   return {
     isConfigured: () => true,
     buildAuthorizationUrl: (state) =>
-      `https://www.instagram.com/oauth/authorize?state=${state}`,
+      `https://www.facebook.com/dialog/oauth?state=${state}`,
     exchangeCode: jest.fn().mockResolvedValue({
       accessToken: 'short-lived-token',
-      appScopedUserId: '111',
-      permissions: ['instagram_business_basic'],
+      expiresInSeconds: 3600,
     }),
     exchangeForLongLivedToken: jest.fn().mockResolvedValue({
       accessToken: 'long-lived-token',
       expiresInSeconds: 5_184_000,
     }),
-    getProfile: jest
-      .fn()
-      .mockResolvedValue({ userId: '178414', username: 'carlaexpert' }),
+    getAuthorizedAccount: jest.fn().mockResolvedValue({
+      authorizingUserId: '111',
+      permissions: [
+        'pages_show_list',
+        'pages_read_engagement',
+        'instagram_basic',
+        'instagram_manage_comments',
+        'instagram_manage_messages',
+      ],
+      accessToken: 'page-token',
+      userId: '178414',
+      username: 'carlaexpert',
+      pageId: 'page-1',
+      pageName: 'Carla Page',
+      pageTasks: ['MESSAGING', 'MODERATE'],
+    }),
     ...overrides,
   };
 }
@@ -112,6 +205,7 @@ describe('Instagram connection', () => {
   let stateStore: InMemoryStateStore;
   let experts: InMemoryExpertsRepository;
   let credentials: InMemoryCredentialsRepository;
+  let accounts: InMemoryAccountsRepository;
   const cipher = new IntegrationTokenEncryptionService();
 
   beforeEach(() => {
@@ -132,6 +226,7 @@ describe('Instagram connection', () => {
     stateStore = new InMemoryStateStore();
     experts = new InMemoryExpertsRepository();
     credentials = new InMemoryCredentialsRepository();
+    accounts = new InMemoryAccountsRepository();
     void experts.create(expert);
   });
 
@@ -144,6 +239,7 @@ describe('Instagram connection', () => {
       gateway,
       experts,
       credentials,
+      accounts,
       cipher,
       ids,
     );
@@ -228,8 +324,7 @@ describe('Instagram connection', () => {
     it('stores the long-lived token encrypted and marks the expert as connected', async () => {
       const exchangeCode = jest.fn().mockResolvedValue({
         accessToken: 'short-lived-token',
-        appScopedUserId: '111',
-        permissions: ['instagram_business_basic'],
+        expiresInSeconds: 3600,
       });
       const state = await startAndGetState();
 
@@ -264,9 +359,15 @@ describe('Instagram connection', () => {
         type: IntegrationAccountType.INSTAGRAM_ACCOUNT,
         externalId: '178414',
         displayName: 'carlaexpert',
+        metadata: {
+          pageId: 'page-1',
+          pageName: 'Carla Page',
+          pageTasks: ['MESSAGING', 'MODERATE'],
+          authFlow: 'facebook_login_for_business',
+        },
       });
       expect(credential.accessToken!.encryptedValue).not.toContain(
-        'long-lived-token',
+        'page-token',
       );
       const owner = {
         tenantId,
@@ -275,9 +376,7 @@ describe('Instagram connection', () => {
         provider: IntegrationProvider.INSTAGRAM,
         purpose: 'access_token' as const,
       };
-      expect(cipher.decrypt(credential.accessToken!, owner)).toBe(
-        'long-lived-token',
-      );
+      expect(cipher.decrypt(credential.accessToken!, owner)).toBe('page-token');
       // Preso ao registro: não decifra como se fosse de outro expert.
       expect(() =>
         cipher.decrypt(credential.accessToken!, {
@@ -333,12 +432,79 @@ describe('Instagram connection', () => {
       const gateway = fakeGateway({
         exchangeCode: jest
           .fn()
-          .mockRejectedValue(new InstagramOAuthError('Meta respondeu 400')),
+          .mockRejectedValue(
+            new InstagramOAuthError('exchange_failed', 'Meta respondeu 400'),
+          ),
       });
 
       await expect(
         complete(gateway).execute({ state, code: 'x' }),
       ).resolves.toMatchObject({ status: 'failed', reason: 'exchange_failed' });
+      expect(credentials.credentials).toHaveLength(0);
+    });
+
+    it('keeps the existing connection when validating a reconnection fails', async () => {
+      const existingCredential = {} as IntegrationCredential;
+      credentials.credentials.push(existingCredential);
+      const state = await startAndGetState();
+      const gateway = fakeGateway({
+        getAuthorizedAccount: jest
+          .fn()
+          .mockRejectedValue(
+            new InstagramOAuthError(
+              'missing_permissions',
+              'Permissões obrigatórias não concedidas.',
+            ),
+          ),
+      });
+
+      await expect(
+        complete(gateway).execute({ state, code: 'x' }),
+      ).resolves.toMatchObject({
+        status: 'failed',
+        reason: 'missing_permissions',
+      });
+      expect(credentials.credentials).toEqual([existingCredential]);
+    });
+
+    it('allows reconnecting the same account to the same expert', async () => {
+      const firstState = await startAndGetState();
+      await complete().execute({ state: firstState, code: 'first' });
+      accounts.accounts.push(credentials.accounts[0]);
+      const secondState = await startAndGetState();
+
+      await expect(
+        complete().execute({ state: secondState, code: 'second' }),
+      ).resolves.toMatchObject({ status: 'connected' });
+      expect(credentials.credentials).toHaveLength(2);
+    });
+
+    it('rejects an Instagram account connected to another tenant or expert', async () => {
+      const now = new Date();
+      accounts.accounts.push(
+        new IntegrationAccount({
+          id: ids.generate(),
+          tenantId: ids.generate(),
+          expertId: ids.generate(),
+          credentialId: ids.generate(),
+          provider: IntegrationProvider.INSTAGRAM,
+          type: IntegrationAccountType.INSTAGRAM_ACCOUNT,
+          externalId: '178414',
+          displayName: 'carlaexpert',
+          metadata: {},
+          connectedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        }),
+      );
+      const state = await startAndGetState();
+
+      await expect(
+        complete().execute({ state, code: 'x' }),
+      ).resolves.toMatchObject({
+        status: 'failed',
+        reason: 'account_already_connected',
+      });
       expect(credentials.credentials).toHaveLength(0);
     });
 

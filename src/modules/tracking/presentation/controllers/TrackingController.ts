@@ -1,5 +1,6 @@
 import {
   Body,
+  Delete,
   Controller,
   Get,
   HttpCode,
@@ -16,6 +17,7 @@ import { CurrentAuth } from '../../../auth/presentation/decorators/CurrentAuth';
 import { CreateTrackingPixelUseCase } from '../../application/use-cases/CreateTrackingPixelUseCase';
 import { GetTrackingPixelUseCase } from '../../application/use-cases/GetTrackingPixelUseCase';
 import { SetTrackingPageLaunchUseCase } from '../../application/use-cases/SetTrackingPageLaunchUseCase';
+import { RevokeTrackingSetupUseCase } from '../../application/use-cases/RevokeTrackingSetupUseCase';
 import { StartTrackingSetupUseCase } from '../../application/use-cases/StartTrackingSetupUseCase';
 import type { TrackingPixel } from '../../domain/entities/TrackingPixel';
 import type { TrackingPageSummary } from '../../domain/repositories/TrackingRulesRepository';
@@ -30,6 +32,7 @@ export class TrackingController {
     private readonly getPixel: GetTrackingPixelUseCase,
     private readonly createPixel: CreateTrackingPixelUseCase,
     private readonly startSetup: StartTrackingSetupUseCase,
+    private readonly revokeSetup: RevokeTrackingSetupUseCase,
     private readonly setPageLaunch: SetTrackingPageLaunchUseCase,
   ) {}
 
@@ -91,6 +94,16 @@ export class TrackingController {
     this.validateExpertId(expertId);
     const input = await this.validate(body);
     return this.startSetup.execute({ expertId, url: input.url }, auth);
+  }
+
+  @Delete('setup-sessions')
+  @HttpCode(204)
+  async revokeSetupSessions(
+    @Param('expertId') expertId: string,
+    @CurrentAuth() auth: AccessTokenClaims,
+  ): Promise<void> {
+    this.validateExpertId(expertId);
+    await this.revokeSetup.execute(expertId, auth);
   }
 
   private toResponse(pixel: TrackingPixel, pages: TrackingPageSummary[]) {

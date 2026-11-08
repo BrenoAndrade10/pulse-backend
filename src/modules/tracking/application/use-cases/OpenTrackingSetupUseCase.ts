@@ -8,6 +8,8 @@ import type { TrackingRulesRepository } from '../../domain/repositories/Tracking
 import { TRACKING_SETUP_SESSION_STORE } from '../../domain/repositories/TrackingSetupSessionStore';
 import type { TrackingSetupSessionStore } from '../../domain/repositories/TrackingSetupSessionStore';
 import { pageOf } from '../pageOf';
+import { SESSIONS_REPOSITORY } from '../../../auth/domain/repositories/SessionsRepository';
+import type { SessionsRepository } from '../../../auth/domain/repositories/SessionsRepository';
 import { resolveSetupSession } from '../resolveSetupSession';
 
 /** O que o editor precisa ao abrir: o pixel e as regras que valem na página. */
@@ -16,6 +18,9 @@ export class OpenTrackingSetupUseCase {
   constructor(
     @Inject(TRACKING_SETUP_SESSION_STORE)
     private readonly sessions: TrackingSetupSessionStore,
+
+    @Inject(SESSIONS_REPOSITORY)
+    private readonly logins: Pick<SessionsRepository, 'exists'>,
 
     @Inject(TRACKING_PIXELS_REPOSITORY)
     private readonly pixels: TrackingPixelsRepository,
@@ -30,6 +35,7 @@ export class OpenTrackingSetupUseCase {
   }): Promise<{ publicKey: string; pageUrl: string; rules: TrackingRule[] }> {
     const session = await resolveSetupSession(
       this.sessions,
+      this.logins,
       input.token,
       input.origin,
     );

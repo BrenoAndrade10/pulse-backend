@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
 import { DATA_SOURCE } from '../../infra/database/tokens';
 import { ExpertsModule } from '../experts/ExpertsModule';
+import { LaunchesModule } from '../launches/LaunchesModule';
 import { CaptureLeadService } from './application/services/CaptureLeadService';
 import { DeleteLeadUseCase } from './application/use-cases/DeleteLeadUseCase';
 import { ExportLeadsUseCase } from './application/use-cases/ExportLeadsUseCase';
@@ -16,7 +17,7 @@ import { LeadsExportController } from './presentation/controllers/LeadsExportCon
 
 /** Leads captados pelos formulários: dados cifrados, exportação e exclusão. */
 @Module({
-  imports: [ExpertsModule],
+  imports: [ExpertsModule, LaunchesModule],
   controllers: [LeadsController, LeadsExportController],
   providers: [
     CaptureLeadService,

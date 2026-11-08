@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Environment } from '../../../../config/Environment';
 import { DomainError } from '../../../../shared/errors/DomainError';
 
-const GRAPH_URL = 'https://graph.instagram.com';
+const GRAPH_URL = 'https://graph.facebook.com';
 const REQUEST_TIMEOUT_MS = 15_000;
 const INVALID_TOKEN_CODE = 190;
 
@@ -16,18 +16,21 @@ export class InstagramGraphClient {
     accessToken: string,
   ): Promise<TResponse> {
     const url = this.url(path, params);
-    url.searchParams.set('access_token', accessToken);
 
-    return this.request<TResponse>(url, { method: 'GET' });
+    return this.request<TResponse>(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
   }
 
   async subscribeToComments(accessToken: string): Promise<void> {
     const url = this.url('/me/subscribed_apps', {
       subscribed_fields: 'comments',
     });
-    url.searchParams.set('access_token', accessToken);
-
-    await this.request(url, { method: 'POST' });
+    await this.request(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
   }
 
   async sendPrivateReply(input: {
@@ -81,11 +84,12 @@ export class InstagramGraphClient {
     accessToken: string;
   }): Promise<void> {
     const url = this.url(`/${encodeURIComponent(input.commentId)}/replies`);
-    url.searchParams.set('access_token', input.accessToken);
-
     await this.request(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({ message: input.text }),
     });
   }
@@ -95,7 +99,7 @@ export class InstagramGraphClient {
 
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     const url = new URL(
-      `${GRAPH_URL}/${Environment.vars.INSTAGRAM_GRAPH_API_VERSION}${normalizedPath}`,
+      `${GRAPH_URL}/${Environment.vars.META_GRAPH_API_VERSION}${normalizedPath}`,
     );
 
     Object.entries(params).forEach(([key, value]) => {
@@ -132,9 +136,7 @@ export class InstagramGraphClient {
       }
 
       throw new DomainError(502, 'INSTAGRAM_GRAPH_API_ERROR', {
-        message:
-          error.message ??
-          `Erro ao chamar a Instagram Graph API: ${response.status}`,
+        status: response.status,
         ...(error.code !== undefined && { code: error.code }),
       });
     }
@@ -142,13 +144,11 @@ export class InstagramGraphClient {
     return data as TResponse;
   }
 
-  private extractError(data: unknown): { code?: number; message?: string } {
-    const error = (data as { error?: { code?: unknown; message?: unknown } })
-      ?.error;
+  private extractError(data: unknown): { code?: number } {
+    const error = (data as { error?: { code?: unknown } })?.error;
 
     return {
       code: typeof error?.code === 'number' ? error.code : undefined,
-      message: typeof error?.message === 'string' ? error.message : undefined,
     };
   }
 }

@@ -41,7 +41,7 @@ const timezone = yup
 export const createLaunchSchema = yup
   .object({
     expertId: uuidV7.required('Informe o expert.'),
-    slug: slug.required('Informe o slug.'),
+    slug: slug.optional(),
     type: yup
       .mixed<LaunchType>()
       .oneOf(Object.values(LaunchType), 'Informe um tipo válido.')
