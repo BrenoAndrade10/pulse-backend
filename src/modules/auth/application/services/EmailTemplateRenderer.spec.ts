@@ -1,6 +1,11 @@
 import { EmailTemplateRenderer } from './EmailTemplateRenderer';
+import { Environment } from '../../../../config/Environment';
 
 describe('EmailTemplateRenderer', () => {
+  beforeEach(() => {
+    Environment.vars = {} as typeof Environment.vars;
+  });
+
   it('renders branded HTML and escapes user data', () => {
     const result = new EmailTemplateRenderer().render('password-changed', {
       title: 'Senha alterada',
@@ -14,7 +19,11 @@ describe('EmailTemplateRenderer', () => {
     expect(result.text).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
   });
 
-  it('uses the Pulse logo as an inline image in the header', () => {
+  it('uses the public Pulse logo URL when API_PUBLIC_URL is configured', () => {
+    Environment.vars = {
+      API_PUBLIC_URL: 'https://api.example.com/base',
+    } as typeof Environment.vars;
+
     const result = new EmailTemplateRenderer().render('login-code', {
       title: 'Seu código de acesso',
       code: '123456',
@@ -22,17 +31,23 @@ describe('EmailTemplateRenderer', () => {
       context: 'Chrome',
     });
 
-    expect(result.html).toContain("src='cid:pulse-logo'");
-    expect(result.inlineImages).toHaveLength(1);
-    expect(result.inlineImages[0]).toMatchObject({
-      contentId: 'pulse-logo',
-      contentType: 'image/png',
+    expect(result.html).toContain(
+      "src='https://api.example.com/assets/brand/pulse-logo.png'",
+    );
+    expect(result.html).not.toContain('cid:');
+  });
+
+  it('renders styled fallback text when API_PUBLIC_URL is not configured', () => {
+    const result = new EmailTemplateRenderer().render('login-code', {
+      title: 'Seu código de acesso',
+      code: '123456',
+      validMinutes: 10,
+      context: 'Chrome',
     });
-    expect(
-      Buffer.from(result.inlineImages[0].base64, 'base64')
-        .subarray(0, 4)
-        .toString('hex'),
-    ).toBe('89504e47');
+
+    expect(result.html).toContain('>Pulse Lead</span>');
+    expect(result.html).toContain('color:#ffffff');
+    expect(result.html).not.toContain('<img');
   });
 
   it('renders the login code and security guidance', () => {

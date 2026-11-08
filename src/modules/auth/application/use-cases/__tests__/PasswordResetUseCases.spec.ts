@@ -24,7 +24,6 @@ describe('Password reset use cases', () => {
   const rendered = {
     html: '<p>email</p>',
     text: 'email',
-    inlineImages: [],
   };
   const accounts = { findUserByEmail: jest.fn() };
   const replaceForUser: jest.MockedFunction<

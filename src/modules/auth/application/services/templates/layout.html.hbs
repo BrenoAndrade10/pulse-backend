@@ -35,12 +35,18 @@
                 align='center'
                 style='padding:32px 32px 24px;background:#120e1c;border-bottom:1px solid #302740'
               >
-                <img
-                  src='cid:{{logoCid}}'
-                  alt='Pulse Lead'
-                  width='132'
-                  style='display:block;width:132px;height:auto;border:0;outline:none'
-                />
+                {{#if logoUrl}}
+                  <img
+                    src='{{logoUrl}}'
+                    alt='Pulse Lead'
+                    width='132'
+                    style='display:block;width:132px;height:auto;border:0;outline:none'
+                  />
+                {{else}}
+                  <span
+                    style='display:block;color:#ffffff;font-size:28px;line-height:1;font-weight:700'
+                  >Pulse Lead</span>
+                {{/if}}
               </td>
             </tr>
             <tr>

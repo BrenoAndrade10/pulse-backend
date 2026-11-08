@@ -33,10 +33,15 @@ import { AdminResetTwoFactorUseCase } from './application/use-cases/AdminResetTw
 import { TwoFactorAdminController } from './presentation/controllers/TwoFactorAdminController';
 import { EmailLoginCodes } from './application/services/EmailLoginCodes';
 import { EmailChallengeUseCase } from './application/use-cases/challenge/EmailChallengeUseCase';
+import { PublicAssetsController } from './presentation/controllers/PublicAssetsController';
 
 @Module({
   imports: [TwoFactorModule],
-  controllers: [AuthController, TwoFactorAdminController],
+  controllers: [
+    AuthController,
+    TwoFactorAdminController,
+    PublicAssetsController,
+  ],
   providers: [
     LoginUseCase,
     RefreshSessionUseCase,

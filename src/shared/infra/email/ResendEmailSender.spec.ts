@@ -46,7 +46,7 @@ describe('ResendEmailSender', () => {
     });
   });
 
-  it('attaches inline images and names the sender Pulse Lead', async () => {
+  it('does not attach inline images and names the sender Pulse Lead', async () => {
     Environment.vars = {
       RESEND_API_KEY: 'resend-key',
       EMAIL_FROM: 'noreply@example.com',
@@ -61,30 +61,15 @@ describe('ResendEmailSender', () => {
     await new ResendEmailSender().send({
       to: 'user@example.com',
       subject: 'Código',
-      html: '<img src="cid:pulse-logo">',
+      html: '<img src="https://api.example.com/assets/brand/pulse-logo.png">',
       text: '123456',
-      inlineImages: [
-        {
-          contentId: 'pulse-logo',
-          filename: 'pulse-logo.png',
-          contentType: 'image/png',
-          base64: 'AAAA',
-        },
-      ],
     });
 
     if (typeof capturedInit?.body !== 'string') throw new Error('body ausente');
     expect(JSON.parse(capturedInit.body)).toMatchObject({
       from: 'Pulse Lead <noreply@example.com>',
-      attachments: [
-        {
-          filename: 'pulse-logo.png',
-          content: 'AAAA',
-          content_type: 'image/png',
-          content_id: 'pulse-logo',
-        },
-      ],
     });
+    expect(JSON.parse(capturedInit.body)).not.toHaveProperty('attachments');
   });
 
   it('fails when Resend rejects the request', async () => {

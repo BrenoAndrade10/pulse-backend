@@ -25,12 +25,6 @@ export class ResendEmailSender implements EmailSender {
         subject: input.subject,
         html: input.html,
         text: input.text,
-        attachments: input.inlineImages?.map((image) => ({
-          filename: image.filename,
-          content: image.base64,
-          content_type: image.contentType,
-          content_id: image.contentId,
-        })),
       }),
       signal: AbortSignal.timeout(10_000),
     });

@@ -38,7 +38,6 @@ export class StartInstagramConnectionUseCase {
   async execute(
     input: StartInstagramConnectionInput,
   ): Promise<{ authorizationUrl: string }> {
-    // Falha aqui, antes de mandar o usuário à Meta, e não só no callback.
     if (!this.instagram.isConfigured()) {
       throw new DomainError(503, 'INSTAGRAM_LOGIN_NOT_CONFIGURED');
     }
@@ -51,7 +50,6 @@ export class StartInstagramConnectionUseCase {
 
     const expert = await this.expertsRepository.findById(input.expertId);
 
-    // Expert de outra empresa responde como inexistente.
     if (!expert || expert.tenantId !== input.tenantId) {
       throw new DomainError(404, 'EXPERT_NOT_FOUND');
     }

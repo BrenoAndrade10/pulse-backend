@@ -34,6 +34,17 @@ export class Environment {
     INSTAGRAM_GRAPH_API_VERSION: yup.string().optional(),
 
     FRONTEND_URL: yup.string().optional().default('http://localhost:5173'),
+    API_PUBLIC_URL: yup
+      .string()
+      .optional()
+      .test('http-url', 'API_PUBLIC_URL deve ser uma URL http(s).', (value) => {
+        if (!value) return true;
+        try {
+          return /^https?:$/.test(new URL(value).protocol);
+        } catch {
+          return false;
+        }
+      }),
     RESEND_API_KEY: yup.string().optional(),
     EMAIL_FROM: yup.string().optional(),
 
