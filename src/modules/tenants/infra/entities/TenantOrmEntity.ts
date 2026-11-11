@@ -20,6 +20,9 @@ export class TenantOrmEntity {
   @Column({ type: 'varchar', length: 50, default: TenantStatus.ACTIVE })
   status: TenantStatus;
 
+  @Column({ type: 'varchar', length: 64, default: 'America/Sao_Paulo' })
+  timezone: string;
+
   @CreateDateColumn({
     type: 'timestamp',
     default: () => "timezone('utc', now())",

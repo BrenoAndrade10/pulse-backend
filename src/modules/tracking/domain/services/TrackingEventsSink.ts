@@ -19,6 +19,9 @@ export type TrackingEventRow = {
   utm_content: string;
   utm_term: string;
   fbclid: string;
+  click_id: string;
+  fbp: string;
+  fbc: string;
   anonymous_id: string;
   session_id: string;
   device: string;

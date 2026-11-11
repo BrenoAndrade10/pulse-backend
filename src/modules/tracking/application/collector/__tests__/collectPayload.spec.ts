@@ -12,6 +12,9 @@ const event = (overrides: Record<string, unknown> = {}) => ({
   url: 'https://site.com/captura?utm_source=ig',
   aid: 'anon_1',
   sid: 'sess-1',
+  pl: 'click_1',
+  fbp: 'fb.1.123.abc',
+  fbc: 'fb.1.123.def',
   utm: { source: 'ig', campaign: 'marco', extra: 'x' },
   ...overrides,
 });
@@ -82,6 +85,34 @@ describe('parseCollectPayload', () => {
       events: [event({ aid: '<script>' })],
     });
     expect(parsed.anonymousId).toBe('');
+  });
+
+  it('accepts safe identity attribution fields and discards invalid values', () => {
+    const [parsed] = parseCollectPayload({
+      events: [
+        event({
+          pl: 'click_1',
+          fbp: 'fb.1.123.abc',
+          fbc: 'fb.1.123.def',
+        }),
+      ],
+    });
+    expect(parsed).toMatchObject({
+      clickId: 'click_1',
+      fbp: 'fb.1.123.abc',
+      fbc: 'fb.1.123.def',
+    });
+
+    const [invalid] = parseCollectPayload({
+      events: [
+        event({
+          pl: '<script>',
+          fbp: 'bad value',
+          fbc: 'x'.repeat(201),
+        }),
+      ],
+    });
+    expect(invalid).toMatchObject({ clickId: '', fbp: '', fbc: '' });
   });
 });
 

@@ -165,6 +165,10 @@ describe('CollectEventsUseCase', () => {
       event({
         name: 'Anything',
         ruleId: RULE_ID,
+        aid: 'anon-1',
+        pl: 'click-1',
+        fbp: 'fb.1.123.abc',
+        fbc: 'fb.1.123.def',
         lead: {
           values: {
             name: 'Ana',
@@ -188,12 +192,18 @@ describe('CollectEventsUseCase', () => {
           custom: { 'Como nos conheceu': 'Reels' },
         },
         consent: true,
+        anonymousId: 'anon-1',
+        clickId: 'click-1',
       }),
     );
     expect(written()[0]).toMatchObject({
       event_name: 'Lead',
       lead_id: 'lead-a',
       rule_id: RULE_ID,
+      click_id: 'click-1',
+      fbp: 'fb.1.123.abc',
+      fbc: 'fb.1.123.def',
+      anonymous_id: 'anon-1',
     });
   });
 

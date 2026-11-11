@@ -53,6 +53,9 @@ export type RecordSubmissionInput = {
   pageUrl: string;
   utm: Utm;
   submittedAt: Date;
+  anonymousId?: string;
+  clickId?: string;
+  identityId?: string;
   /** Ids gerados antes, usados se o lead ou o envio forem novos. */
   newLeadId: string;
   submissionId: string;

@@ -54,7 +54,10 @@ export class PostgresLeadsRepository implements LeadsRepository {
         `SELECT "leadId" FROM "lead_submissions" WHERE "pixelId" = $1 AND "eventId" = $2`,
         [input.pixelId, input.eventId],
       );
-      if (seen.length > 0) return { leadId: seen[0].leadId, duplicate: true };
+      if (seen.length > 0) {
+        await this.recordIdentity(manager, input, seen[0].leadId);
+        return { leadId: seen[0].leadId, duplicate: true };
+      }
 
       const lead = await this.lockOrCreate(manager, input);
 
@@ -81,7 +84,10 @@ export class PostgresLeadsRepository implements LeadsRepository {
           input.submittedAt,
         ],
       );
-      if (inserted.length === 0) return { leadId: lead.id, duplicate: true };
+      if (inserted.length === 0) {
+        await this.recordIdentity(manager, input, lead.id);
+        return { leadId: lead.id, duplicate: true };
+      }
 
       if (input.launchId) {
         await manager.query(
@@ -105,8 +111,37 @@ export class PostgresLeadsRepository implements LeadsRepository {
         );
       }
 
+      await this.recordIdentity(manager, input, lead.id);
       return { leadId: lead.id, duplicate: false };
     });
+  }
+
+  private async recordIdentity(
+    manager: EntityManager,
+    input: RecordSubmissionInput,
+    leadId: string,
+  ): Promise<void> {
+    const anonymousId = input.anonymousId?.trim();
+    if (!anonymousId || !input.identityId) return;
+
+    await manager.query(
+      `
+        INSERT INTO "lead_identities" (
+          "id", "tenantId", "expertId", "leadId", "anonymousId", "clickId",
+          "source", "confidence", "firstSeenAt"
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'form_submit', 'high', $7)
+        ON CONFLICT ("tenantId", "leadId", "anonymousId") DO NOTHING
+      `,
+      [
+        input.identityId,
+        input.tenantId,
+        input.expertId,
+        leadId,
+        anonymousId,
+        input.clickId?.trim() || null,
+        input.submittedAt,
+      ],
+    );
   }
 
   /** Acha a pessoa (travando a linha) ou cria o lead; depois junta os dados. */

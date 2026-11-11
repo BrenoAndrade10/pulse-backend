@@ -26,6 +26,8 @@ describe('CaptureLeadService', () => {
     pageUrl: 'https://site.com/captura',
     utm: { source: 'instagram' },
     submittedAt: new Date('2026-10-18T12:00:00Z'),
+    anonymousId: 'anon-1',
+    clickId: 'click-1',
     values: { custom: {}, ...values },
     consent: true,
   });
@@ -71,6 +73,9 @@ describe('CaptureLeadService', () => {
       eventId: 'event-a',
       consent: true,
       utm: { source: 'instagram' },
+      anonymousId: 'anon-1',
+      clickId: 'click-1',
+      identityId: 'id-1',
     });
     expect(JSON.stringify(call)).not.toContain('ana@exemplo.com');
   });
@@ -123,7 +128,7 @@ describe('CaptureLeadService', () => {
     ).toEqual({
       name: 'Ana',
       email: 'ana@exemplo.com',
-      phone: '+5511977776666',
+      phone: '+5511999998888',
       custom: { Origem: 'Reels' },
     });
   });

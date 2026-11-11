@@ -39,6 +39,7 @@ export class CreateLaunchUseCase {
     auth: AccessTokenClaims,
   ): Promise<Launch> {
     const tenantId = requireLaunchAdmin(auth);
+    
     const expert = await this.experts.findByTenantIdAndId(
       tenantId,
       input.expertId,

@@ -13,16 +13,25 @@ export type CollectedEvent = {
   sessionId: string;
   utm: Utm;
   fbclid: string;
+  clickId: string;
+  fbp: string;
+  fbc: string;
   lead: { values: Record<string, string | boolean> } | null;
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHORT_ID = /^[\w-]{1,64}$/;
+const SAFE_TRACKING_ID = /^[A-Za-z0-9._:-]+$/;
 const SLUG = /^[a-z][a-z0-9_]{0,39}$/;
 const UTM_KEYS = ['source', 'medium', 'campaign', 'content', 'term'] as const;
 
 const text = (value: unknown, max: number): string =>
   typeof value === 'string' ? value.slice(0, max) : '';
+
+const safeTrackingId = (value: unknown, max: number): string => {
+  if (typeof value !== 'string' || value.length > max) return '';
+  return value && SAFE_TRACKING_ID.test(value) ? value : '';
+};
 
 function parseUtm(value: unknown): Utm {
   if (!value || typeof value !== 'object') return {};
@@ -98,6 +107,14 @@ export function parseCollectPayload(body: unknown): CollectedEvent[] {
           sessionId: SHORT_ID.test(sessionId) ? sessionId : '',
           utm: parseUtm(event.utm),
           fbclid: text(event.fbclid, 500),
+          clickId:
+            typeof event.pl === 'string' &&
+            event.pl.length <= 64 &&
+            SHORT_ID.test(event.pl)
+              ? event.pl
+              : '',
+          fbp: safeTrackingId(event.fbp, 100),
+          fbc: safeTrackingId(event.fbc, 200),
           lead: parseLead(event.lead),
         },
       ];

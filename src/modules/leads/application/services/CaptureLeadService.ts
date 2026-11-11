@@ -23,6 +23,8 @@ export type CaptureLeadInput = {
   pageUrl: string;
   utm: Utm;
   submittedAt: Date;
+  anonymousId?: string;
+  clickId?: string;
   values: {
     name?: string;
     email?: string;
@@ -90,6 +92,9 @@ export class CaptureLeadService {
       pageUrl: input.pageUrl,
       utm: input.utm,
       submittedAt: input.submittedAt,
+      anonymousId: input.anonymousId,
+      clickId: input.clickId,
+      identityId: input.anonymousId?.trim() ? this.ids.generate() : undefined,
       newLeadId: this.ids.generate(),
       submissionId: this.ids.generate(),
       mergeProfile: (leadId, current) => {

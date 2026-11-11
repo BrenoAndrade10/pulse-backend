@@ -7,6 +7,7 @@ import { AuthModule } from './modules/auth/AuthModule';
 import { ExpertsModule } from './modules/experts/ExpertsModule';
 import { LaunchesModule } from './modules/launches/LaunchesModule';
 import { LeadsModule } from './modules/leads/LeadsModule';
+import { LinksModule } from './modules/links/LinksModule';
 import { MetaModule } from './modules/meta/MetaModule';
 import { TenantsModule } from './modules/tenants/TenantsModule';
 import { TrackingModule } from './modules/tracking/TrackingModule';
@@ -30,6 +31,7 @@ import { RateLimitInterceptor } from './shared/presentation/interceptors/RateLim
     MetaModule,
     TrackingModule,
     LeadsModule,
+    LinksModule,
     TwoFactorModule,
   ],
   controllers: [AppController],

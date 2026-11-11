@@ -205,6 +205,9 @@ export class CollectEventsUseCase {
       utm_content: event.utm.content ?? '',
       utm_term: event.utm.term ?? '',
       fbclid: event.fbclid,
+      click_id: event.clickId,
+      fbp: event.fbp,
+      fbc: event.fbc,
       anonymous_id: event.anonymousId,
       session_id: event.sessionId,
       device: context.device,
@@ -247,6 +250,8 @@ export class CollectEventsUseCase {
         pageUrl: page.pageUrl,
         utm: event.utm,
         submittedAt: page.receivedAt,
+        anonymousId: event.anonymousId,
+        clickId: event.clickId,
         values,
         consent,
       });
