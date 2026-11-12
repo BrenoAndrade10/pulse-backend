@@ -10,6 +10,9 @@ export type LeadLaunchRow = {
   firstUtm: Utm;
 };
 
+export const LEAD_HEAT_BANDS = ['cold', 'warm', 'hot'] as const;
+export type LeadHeatBand = (typeof LEAD_HEAT_BANDS)[number];
+
 export type LeadRow = {
   id: string;
   tenantId: string;
@@ -18,6 +21,9 @@ export type LeadRow = {
   consent: boolean | null;
   firstSeenAt: Date;
   lastSeenAt: Date;
+  heatScore: number;
+  heatBand: LeadHeatBand;
+  heatCalculatedAt: Date | null;
   launches: LeadLaunchRow[];
   /** Posição do lead na listagem, exata como está no banco (ver LeadCursor). */
   cursor: LeadCursor;
@@ -36,6 +42,7 @@ export type ListLeadsQuery = {
   launchId?: string;
   emailHash?: string;
   phoneHash?: string;
+  heatBand?: LeadHeatBand;
   after?: LeadCursor;
   limit: number;
 };
@@ -69,6 +76,22 @@ export type RecordSubmissionInput = {
   ) => EncryptedProfile;
 };
 
+export type LeadIdentities = { anonymousIds: string[]; clickIds: string[] };
+
+export type LeadHeatUpdate = {
+  score: number;
+  band: LeadHeatBand;
+  calculatedAt: Date;
+};
+
+export type HeatCandidatesQuery = { staleBefore: Date; limit: number };
+
+export type HeatCandidate = {
+  tenantId: string;
+  expertId: string;
+  leadId: string;
+};
+
 export interface LeadsRepository {
   /**
    * Grava um envio de formulário numa transação: cria ou atualiza o lead
@@ -81,6 +104,18 @@ export interface LeadsRepository {
   list(query: ListLeadsQuery): Promise<LeadRow[]>;
   count(query: Omit<ListLeadsQuery, 'after' | 'limit'>): Promise<number>;
   delete(tenantId: string, expertId: string, leadId: string): Promise<boolean>;
+  findIdentities(
+    tenantId: string,
+    expertId: string,
+    leadId: string,
+  ): Promise<LeadIdentities | null>;
+  updateHeat(
+    tenantId: string,
+    expertId: string,
+    leadId: string,
+    heat: LeadHeatUpdate,
+  ): Promise<boolean>;
+  listHeatCandidates(query: HeatCandidatesQuery): Promise<HeatCandidate[]>;
   /** Nome dos lançamentos do expert, para a listagem e o CSV. */
   launchNames(tenantId: string, expertId: string): Promise<Map<string, string>>;
   /** Rótulos dos campos personalizados mapeados nas regras do expert (colunas do CSV). */

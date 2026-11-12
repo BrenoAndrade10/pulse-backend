@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type { DataSource, EntityManager } from 'typeorm';
 import type {
+  HeatCandidate,
+  HeatCandidatesQuery,
+  LeadHeatBand,
+  LeadHeatUpdate,
+  LeadIdentities,
   LeadRow,
   LeadsRepository,
   ListLeadsQuery,
@@ -25,6 +30,9 @@ type RawLeadRow = {
   consent: boolean | null;
   firstSeenAt: Date;
   lastSeenAt: Date;
+  heatScore: number;
+  heatBand: LeadHeatBand;
+  heatCalculatedAt: Date | null;
   cursorAt: string;
   launches: {
     launchId: string;
@@ -274,6 +282,7 @@ export class PostgresLeadsRepository implements LeadsRepository {
         SELECT l."id", l."tenantId", l."expertId", l."profileEncrypted",
                l."profileIv", l."profileAuthTag", l."consent",
                l."firstSeenAt", l."lastSeenAt",
+               l."heatScore", l."heatBand", l."heatCalculatedAt",
                to_char(l."lastSeenAt", 'YYYY-MM-DD"T"HH24:MI:SS.US') AS "cursorAt",
                COALESCE(
                  json_agg(
@@ -309,6 +318,9 @@ export class PostgresLeadsRepository implements LeadsRepository {
       consent: row.consent,
       firstSeenAt: row.firstSeenAt,
       lastSeenAt: row.lastSeenAt,
+      heatScore: row.heatScore,
+      heatBand: row.heatBand,
+      heatCalculatedAt: row.heatCalculatedAt,
       cursor: { lastSeenAt: row.cursorAt, id: row.id },
       launches: row.launches.map((launch) => ({
         launchId: launch.launchId,
@@ -369,6 +381,70 @@ export class PostgresLeadsRepository implements LeadsRepository {
     return rows.length > 0;
   }
 
+  async findIdentities(
+    tenantId: string,
+    expertId: string,
+    leadId: string,
+  ): Promise<LeadIdentities | null> {
+    const owned = await this.dataSource.query<unknown[]>(
+      `SELECT 1 FROM "leads" WHERE "tenantId" = $1 AND "expertId" = $2 AND "id" = $3`,
+      [tenantId, expertId, leadId],
+    );
+    if (owned.length === 0) return null;
+
+    const rows = await this.dataSource.query<
+      { anonymousId: string; clickId: string | null }[]
+    >(
+      `SELECT DISTINCT "anonymousId", "clickId" FROM "lead_identities" WHERE "tenantId" = $1 AND "expertId" = $2 AND "leadId" = $3`,
+      [tenantId, expertId, leadId],
+    );
+    const anonymousIds = new Set<string>();
+    const clickIds = new Set<string>();
+    for (const row of rows) {
+      anonymousIds.add(row.anonymousId);
+      if (row.clickId) clickIds.add(row.clickId);
+    }
+    return { anonymousIds: [...anonymousIds], clickIds: [...clickIds] };
+  }
+
+  async updateHeat(
+    tenantId: string,
+    expertId: string,
+    leadId: string,
+    heat: LeadHeatUpdate,
+  ): Promise<boolean> {
+    const result = await this.dataSource.query<[unknown[], number] | unknown[]>(
+      `
+        UPDATE "leads"
+        SET "heatScore" = $4, "heatBand" = $5, "heatCalculatedAt" = $6
+        WHERE "id" = $1 AND "tenantId" = $2 AND "expertId" = $3
+        RETURNING "id"
+      `,
+      [leadId, tenantId, expertId, heat.score, heat.band, heat.calculatedAt],
+    );
+    const rows = Array.isArray(result[0]) ? result[0] : result;
+    return rows.length > 0;
+  }
+
+  async listHeatCandidates(
+    query: HeatCandidatesQuery,
+  ): Promise<HeatCandidate[]> {
+    const limit = Math.min(Math.max(Math.trunc(query.limit) || 1, 1), 1000);
+    return this.dataSource.query<HeatCandidate[]>(
+      `
+        SELECT l."tenantId", l."expertId", l."id" AS "leadId"
+        FROM "leads" l
+        WHERE EXISTS (
+            SELECT 1 FROM "lead_identities" i WHERE i."leadId" = l."id"
+          )
+          AND (l."heatCalculatedAt" IS NULL OR l."heatCalculatedAt" < $1)
+        ORDER BY l."heatCalculatedAt" ASC NULLS FIRST, l."id" ASC
+        LIMIT $2
+      `,
+      [query.staleBefore, limit],
+    );
+  }
+
   private filters(query: Omit<ListLeadsQuery, 'after' | 'limit'>) {
     const params: unknown[] = [query.tenantId, query.expertId];
     const where = [`l."tenantId" = $1`, `l."expertId" = $2`];
@@ -386,6 +462,10 @@ export class PostgresLeadsRepository implements LeadsRepository {
     if (query.phoneHash) {
       params.push(query.phoneHash);
       where.push(`l."phoneHash" = $${params.length}`);
+    }
+    if (query.heatBand) {
+      params.push(query.heatBand);
+      where.push(`l."heatBand" = $${params.length}`);
     }
 
     return { where, params };

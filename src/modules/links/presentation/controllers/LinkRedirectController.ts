@@ -25,6 +25,7 @@ export class LinkRedirectController {
       this.sendUnavailable(response, 404, UNAVAILABLE_HTML);
       return;
     }
+
     const result = await this.resolve.execute({
       code,
       query,
@@ -33,6 +34,7 @@ export class LinkRedirectController {
       referrer: request.get('referer') ?? '',
       now: new Date(),
     });
+    
     if (result.kind === 'redirect') {
       response
         .status(302)

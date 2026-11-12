@@ -6,8 +6,10 @@ import type { ExpertsRepository } from '../../../experts/domain/repositories/Exp
 import { LAUNCHES_REPOSITORY } from '../../../launches/domain/repositories/LaunchesRepository';
 import type { LaunchesRepository } from '../../../launches/domain/repositories/LaunchesRepository';
 import { LEADS_REPOSITORY } from '../../domain/repositories/LeadsRepository';
+import { LEAD_HEAT_BANDS } from '../../domain/repositories/LeadsRepository';
 import type {
   LeadCursor,
+  LeadHeatBand,
   LeadsRepository,
 } from '../../domain/repositories/LeadsRepository';
 import { LEAD_CIPHER } from '../../domain/services/LeadCipher';
@@ -26,6 +28,7 @@ export type ListLeadsInput = {
   expertId: string;
   launchId?: string;
   search?: string;
+  heatBand?: LeadHeatBand;
   after?: LeadCursor;
   limit?: number;
 };
@@ -80,11 +83,21 @@ export class ListLeadsUseCase {
       });
     }
 
+    if (
+      input.heatBand !== undefined &&
+      !LEAD_HEAT_BANDS.includes(input.heatBand)
+    ) {
+      throw DomainError.validationFailed({
+        errors: ['Informe uma temperatura válida: cold, warm ou hot.'],
+      });
+    }
+
     const limit = Math.min(Math.max(input.limit ?? 50, 1), MAX_LEADS_PAGE);
     const filter = {
       tenantId,
       expertId: input.expertId,
       launchId: input.launchId,
+      heatBand: input.heatBand,
       ...hashes,
     };
 

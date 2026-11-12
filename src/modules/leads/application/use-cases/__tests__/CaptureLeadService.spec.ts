@@ -46,6 +46,9 @@ describe('CaptureLeadService', () => {
       delete: jest.fn(),
       launchNames: jest.fn(),
       customFieldLabels: jest.fn(),
+      findIdentities: jest.fn(),
+      updateHeat: jest.fn(),
+      listHeatCandidates: jest.fn(),
     };
     service = new CaptureLeadService(leads, cipher, {
       generate: () => `id-${++ids}`,

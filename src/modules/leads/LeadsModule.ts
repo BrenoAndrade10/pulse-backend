@@ -34,6 +34,6 @@ import { LeadsExportController } from './presentation/controllers/LeadsExportCon
         new PostgresLeadsRepository(dataSource),
     },
   ],
-  exports: [CaptureLeadService],
+  exports: [CaptureLeadService, LEADS_REPOSITORY],
 })
 export class LeadsModule {}

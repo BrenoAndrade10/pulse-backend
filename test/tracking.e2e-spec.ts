@@ -164,11 +164,17 @@ describe('Tracking (e2e)', () => {
         consent: input.consent ?? null,
         firstSeenAt: input.submittedAt,
         lastSeenAt: input.submittedAt,
+        heatScore: 0,
+        heatBand: 'cold',
+        heatCalculatedAt: null,
         cursor: { lastSeenAt: '2026-10-18T12:00:00.000000', id },
         launches: [],
       });
       return Promise.resolve({ leadId: id, duplicate: false });
     },
+    findIdentities: () => Promise.resolve(null),
+    updateHeat: () => Promise.resolve(false),
+    listHeatCandidates: () => Promise.resolve([]),
     list: (query) =>
       Promise.resolve(
         query.after

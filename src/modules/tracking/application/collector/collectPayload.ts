@@ -17,6 +17,7 @@ export type CollectedEvent = {
   fbp: string;
   fbc: string;
   lead: { values: Record<string, string | boolean> } | null;
+  engagement: { seconds: number; scroll: number } | null;
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -56,6 +57,23 @@ function parseLead(value: unknown): CollectedEvent['lead'] {
   }
 
   return { values };
+}
+
+const clampInt = (value: number, max: number): number =>
+  Math.min(max, Math.max(0, Math.round(value)));
+
+function parseEngagement(value: unknown): CollectedEvent['engagement'] {
+  if (!value || typeof value !== 'object') return null;
+  const { t, s } = value as { t?: unknown; s?: unknown };
+  if (
+    typeof t !== 'number' ||
+    typeof s !== 'number' ||
+    !Number.isFinite(t) ||
+    !Number.isFinite(s)
+  ) {
+    return null;
+  }
+  return { seconds: clampInt(t, 1800), scroll: clampInt(s, 100) };
 }
 
 /**
@@ -116,6 +134,7 @@ export function parseCollectPayload(body: unknown): CollectedEvent[] {
           fbp: safeTrackingId(event.fbp, 100),
           fbc: safeTrackingId(event.fbc, 200),
           lead: parseLead(event.lead),
+          engagement: parseEngagement(event.eng),
         },
       ];
     });

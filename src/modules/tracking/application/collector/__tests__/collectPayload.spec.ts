@@ -80,6 +80,31 @@ describe('parseCollectPayload', () => {
     });
   });
 
+  it('parses engagement and clamps its values', () => {
+    const [valid, clamped] = parseCollectPayload({
+      events: [
+        event({ name: 'Engaged', eng: { t: 42.4, s: 63 } }),
+        event({ name: 'Engaged', eng: { t: 99999, s: 250 } }),
+      ],
+    });
+
+    expect(valid.engagement).toEqual({ seconds: 42, scroll: 63 });
+    expect(clamped.engagement).toEqual({ seconds: 1800, scroll: 100 });
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['a string', 'x'],
+    ['non numeric fields', { t: '5', s: '10' }],
+    ['a non finite value', { t: null, s: 10 }],
+    ['an incomplete object', { t: 5 }],
+  ])('discards engagement that is %s', (_, eng) => {
+    const [parsed] = parseCollectPayload({
+      events: [event({ name: 'Engaged', eng })],
+    });
+    expect(parsed.engagement).toBeNull();
+  });
+
   it('drops anonymous ids with unexpected characters', () => {
     const [parsed] = parseCollectPayload({
       events: [event({ aid: '<script>' })],

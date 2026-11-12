@@ -160,11 +160,19 @@ export class CollectEventsUseCase {
       : null;
     if (event.ruleId && !rule) return null;
 
+    const engaged =
+      !rule &&
+      event.name === 'Engaged' &&
+      event.engagement !== null &&
+      (event.engagement.seconds >= 1 || event.engagement.scroll > 0);
+
     const eventName = rule
       ? rule.eventName
       : event.name === 'PageView'
         ? 'PageView'
-        : null;
+        : engaged
+          ? 'Engaged'
+          : null;
     if (!eventName) return null;
 
     const pageUrl = pageOf(event.url);
@@ -213,6 +221,8 @@ export class CollectEventsUseCase {
       device: context.device,
       browser: context.browser,
       ip_hash: context.ipHash,
+      engaged_seconds: engaged ? event.engagement!.seconds : 0,
+      scroll_depth: engaged ? event.engagement!.scroll : 0,
       occurred_at: context.receivedAt.toISOString(),
       received_at: context.receivedAt.toISOString(),
     };

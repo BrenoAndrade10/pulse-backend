@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { DatabaseModule } from './infra/database/DatabaseModule';
 import { AuthModule } from './modules/auth/AuthModule';
 import { ExpertsModule } from './modules/experts/ExpertsModule';
+import { HeatModule } from './modules/heat/HeatModule';
 import { LaunchesModule } from './modules/launches/LaunchesModule';
 import { LeadsModule } from './modules/leads/LeadsModule';
 import { LinksModule } from './modules/links/LinksModule';
@@ -31,6 +32,7 @@ import { RateLimitInterceptor } from './shared/presentation/interceptors/RateLim
     MetaModule,
     TrackingModule,
     LeadsModule,
+    HeatModule,
     LinksModule,
     TwoFactorModule,
   ],

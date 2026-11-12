@@ -289,6 +289,46 @@ describe('CollectEventsUseCase', () => {
     expect(pages.resolveLaunch).toHaveBeenCalledTimes(1);
   });
 
+  it('stores Engaged without a rule with the new columns and no lead', async () => {
+    await run([
+      event({ name: 'Engaged', eng: { t: 37, s: 80 } }),
+      event({ name: 'PageView' }),
+    ]);
+
+    const [engaged, view] = written();
+    expect(engaged).toMatchObject({
+      event_name: 'Engaged',
+      rule_id: null,
+      lead_id: null,
+      launch_id: 'launch-a',
+      page_url: `${ORIGIN}/captura`,
+      engaged_seconds: 37,
+      scroll_depth: 80,
+    });
+    expect(view).toMatchObject({ engaged_seconds: 0, scroll_depth: 0 });
+    expect(capture.capture).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['without engagement', undefined],
+    ['invalid engagement', { t: 'x', s: 'y' }],
+    ['empty engagement', { t: 0, s: 0 }],
+  ])('drops Engaged %s', async (_, eng) => {
+    await run([event({ name: 'Engaged', eng })]);
+
+    expect(written()).toEqual([]);
+  });
+
+  it('ignores engagement sent on other events', async () => {
+    await run([event({ name: 'PageView', eng: { t: 10, s: 50 } })]);
+
+    expect(written()[0]).toMatchObject({
+      event_name: 'PageView',
+      engaged_seconds: 0,
+      scroll_depth: 0,
+    });
+  });
+
   it('keeps tracking when leads are not configured', async () => {
     capture.capture.mockRejectedValue(
       new DomainError(503, 'LEADS_ENCRYPTION_KEY_NOT_CONFIGURED'),

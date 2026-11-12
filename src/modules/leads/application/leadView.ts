@@ -1,5 +1,8 @@
 import type { LeadCipher } from '../domain/services/LeadCipher';
-import type { LeadRow } from '../domain/repositories/LeadsRepository';
+import type {
+  LeadHeatBand,
+  LeadRow,
+} from '../domain/repositories/LeadsRepository';
 import type { LeadProfile, Utm } from '../domain/types/LeadProfile';
 
 export type LeadView = {
@@ -8,6 +11,9 @@ export type LeadView = {
   consent: boolean | null;
   firstSeenAt: Date;
   lastSeenAt: Date;
+  heatScore: number;
+  heatBand: LeadHeatBand;
+  heatCalculatedAt: Date | null;
   launches: {
     launchId: string;
     firstSubmittedAt: Date;
@@ -28,6 +34,9 @@ export function toLeadView(row: LeadRow, cipher: LeadCipher): LeadView {
     consent: row.consent,
     firstSeenAt: row.firstSeenAt,
     lastSeenAt: row.lastSeenAt,
+    heatScore: row.heatScore,
+    heatBand: row.heatBand,
+    heatCalculatedAt: row.heatCalculatedAt,
     launches: row.launches,
   };
 }

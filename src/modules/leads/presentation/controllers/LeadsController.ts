@@ -16,7 +16,11 @@ import type { LeadView } from '../../application/leadView';
 import { DeleteLeadUseCase } from '../../application/use-cases/DeleteLeadUseCase';
 import { ExportLeadsUseCase } from '../../application/use-cases/ExportLeadsUseCase';
 import { ListLeadsUseCase } from '../../application/use-cases/ListLeadsUseCase';
-import type { LeadCursor } from '../../domain/repositories/LeadsRepository';
+import { LEAD_HEAT_BANDS } from '../../domain/repositories/LeadsRepository';
+import type {
+  LeadCursor,
+  LeadHeatBand,
+} from '../../domain/repositories/LeadsRepository';
 
 const encodeCursor = (cursor: LeadCursor) =>
   Buffer.from(`${cursor.lastSeenAt}|${cursor.id}`, 'utf8').toString(
@@ -39,6 +43,19 @@ function decodeCursor(value: unknown): LeadCursor | undefined {
   throw DomainError.validationFailed({ errors: ['Página inválida.'] });
 }
 
+function parseHeatBand(value: unknown): LeadHeatBand | undefined {
+  if (value === undefined || value === '') return undefined;
+  if (
+    typeof value === 'string' &&
+    (LEAD_HEAT_BANDS as readonly string[]).includes(value)
+  ) {
+    return value as LeadHeatBand;
+  }
+  throw DomainError.validationFailed({
+    errors: ['Informe uma temperatura válida: cold, warm ou hot.'],
+  });
+}
+
 @Controller('experts/:expertId/leads')
 export class LeadsController {
   constructor(
@@ -52,6 +69,7 @@ export class LeadsController {
     @Param('expertId') expertId: string,
     @Query('launchId') launchId: string | undefined,
     @Query('search') search: string | undefined,
+    @Query('heat') heat: string | undefined,
     @Query('cursor') cursor: string | undefined,
     @Query('limit') limit: string | undefined,
     @CurrentAuth() auth: AccessTokenClaims,
@@ -64,6 +82,7 @@ export class LeadsController {
         expertId,
         launchId,
         search: typeof search === 'string' ? search.slice(0, 254) : undefined,
+        heatBand: parseHeatBand(heat),
         after: decodeCursor(cursor),
         limit: limit ? Number(limit) || undefined : undefined,
       },
@@ -117,6 +136,13 @@ export class LeadsController {
       consent: lead.consent,
       firstSeenAt: lead.firstSeenAt,
       lastSeenAt: lead.lastSeenAt,
+      heat: {
+        score: lead.heatScore,
+        band: lead.heatBand,
+        calculatedAt: lead.heatCalculatedAt
+          ? lead.heatCalculatedAt.toISOString()
+          : null,
+      },
       launches: lead.launches,
     };
   }

@@ -48,6 +48,9 @@ describe('leads queries', () => {
       consent: true,
       firstSeenAt: new Date('2026-10-01T12:00:00Z'),
       lastSeenAt: new Date('2026-10-02T12:00:00Z'),
+      heatScore: 0,
+      heatBand: 'cold',
+      heatCalculatedAt: null,
       cursor: { lastSeenAt: `2026-10-02T12:00:00.00000${index}`, id },
       launches: [
         {
@@ -103,6 +106,9 @@ describe('leads queries', () => {
         .fn()
         .mockResolvedValue(new Map([['launch-a', 'Lançamento Março']])),
       customFieldLabels: jest.fn().mockResolvedValue(['Origem']),
+      findIdentities: jest.fn(),
+      updateHeat: jest.fn(),
+      listHeatCandidates: jest.fn(),
     };
   });
 
@@ -152,6 +158,52 @@ describe('leads queries', () => {
       expect(leads.list).toHaveBeenCalledWith(
         expect.objectContaining({ limit: 3 }),
       );
+    });
+
+    it('passes the heat band filter to list and count', async () => {
+      await useCase().execute({ expertId: 'expert-a', heatBand: 'hot' }, auth);
+
+      expect(leads.list).toHaveBeenCalledWith(
+        expect.objectContaining({ heatBand: 'hot' }),
+      );
+      expect(leads.count).toHaveBeenCalledWith(
+        expect.objectContaining({ heatBand: 'hot' }),
+      );
+    });
+
+    it('rejects an invalid heat band', async () => {
+      await expect(
+        useCase().execute(
+          { expertId: 'expert-a', heatBand: 'burning' as never },
+          auth,
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(leads.list).not.toHaveBeenCalled();
+    });
+
+    it('carries the heat fields into the view', async () => {
+      const calculatedAt = new Date('2026-11-12T10:00:00Z');
+      leads.list.mockResolvedValue([
+        makeRow(1, {
+          heatScore: 55,
+          heatBand: 'hot',
+          heatCalculatedAt: calculatedAt,
+        }),
+        makeRow(2),
+      ]);
+
+      const result = await useCase().execute({ expertId: 'expert-a' }, auth);
+
+      expect(result.leads[0]).toMatchObject({
+        heatScore: 55,
+        heatBand: 'hot',
+        heatCalculatedAt: calculatedAt,
+      });
+      expect(result.leads[1]).toMatchObject({
+        heatScore: 0,
+        heatBand: 'cold',
+        heatCalculatedAt: null,
+      });
     });
 
     it('does not count again on the next pages', async () => {

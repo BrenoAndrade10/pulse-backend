@@ -27,6 +27,8 @@ export type TrackingEventRow = {
   device: string;
   browser: string;
   ip_hash: string;
+  engaged_seconds: number;
+  scroll_depth: number;
   occurred_at: string;
   received_at: string;
 };
