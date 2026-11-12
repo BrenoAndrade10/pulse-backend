@@ -9,6 +9,8 @@ import { requireTenant } from '../../../experts/application/ExpertAuthorization'
 import { LinkStatus } from '../../domain/enums/LinkStatus';
 import { LINKS_REPOSITORY } from '../../domain/repositories/LinksRepository';
 import type { LinksRepository } from '../../domain/repositories/LinksRepository';
+import { LINK_REDIRECT_CACHE } from '../../domain/services/LinkRedirectCache';
+import type { LinkRedirectCache } from '../../domain/services/LinkRedirectCache';
 import { DestinationUrlNormalizer } from '../services/DestinationUrlNormalizer';
 import { LinkShortUrlBuilder } from '../services/LinkShortUrlBuilder';
 import { LinkUtmBuilder } from '../services/LinkUtmBuilder';
@@ -24,6 +26,8 @@ export class UpdateLinkUseCase {
     private readonly destinationNormalizer: DestinationUrlNormalizer,
     private readonly utmBuilder: LinkUtmBuilder,
     private readonly shortUrlBuilder: LinkShortUrlBuilder,
+    @Inject(LINK_REDIRECT_CACHE)
+    private readonly redirectCache: LinkRedirectCache,
   ) {}
 
   async execute(
@@ -171,6 +175,7 @@ export class UpdateLinkUseCase {
       updatedAt: updatedLink.updatedAt,
     });
     if (!saved) throw DomainError.linkNotFound();
+    await this.redirectCache.invalidate(saved.code);
     return { link: saved, shortUrl: this.shortUrlBuilder.build(saved.code) };
   }
 }

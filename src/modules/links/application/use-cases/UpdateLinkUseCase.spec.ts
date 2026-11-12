@@ -68,6 +68,7 @@ function setup(current = link()) {
   const shortUrlBuilder = {
     build: jest.fn().mockReturnValue('https://api.example.com/l/abcdefgh'),
   };
+  const redirectCache = { invalidate: jest.fn() };
   links.updateByTenant.mockImplementation(
     (_tenant: string, _id: string, update: object) => current.with(update),
   );
@@ -79,12 +80,14 @@ function setup(current = link()) {
       normalizer as never,
       utmBuilder as never,
       shortUrlBuilder as never,
+      redirectCache as never,
     ),
     links,
     experts,
     launches,
     normalizer,
     utmBuilder,
+    redirectCache,
   };
 }
 

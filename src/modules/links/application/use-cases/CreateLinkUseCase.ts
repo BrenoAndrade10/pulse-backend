@@ -19,6 +19,8 @@ import { LINK_CODE_GENERATOR } from '../../domain/services/LinkCodeGenerator';
 import type { LinkCodeGenerator } from '../../domain/services/LinkCodeGenerator';
 import { LINKS_REPOSITORY } from '../../domain/repositories/LinksRepository';
 import type { LinksRepository } from '../../domain/repositories/LinksRepository';
+import { LINK_REDIRECT_CACHE } from '../../domain/services/LinkRedirectCache';
+import type { LinkRedirectCache } from '../../domain/services/LinkRedirectCache';
 import type { CreateLinkInput } from '../../presentation/schemas/LinkSchemas';
 
 export type CreateLinkOutput = {
@@ -37,6 +39,8 @@ export class CreateLinkUseCase {
     private readonly destinationNormalizer: DestinationUrlNormalizer,
     private readonly utmBuilder: LinkUtmBuilder,
     private readonly shortUrlBuilder: LinkShortUrlBuilder,
+    @Inject(LINK_REDIRECT_CACHE)
+    private readonly redirectCache: LinkRedirectCache,
   ) {}
 
   async execute(
@@ -108,6 +112,7 @@ export class CreateLinkUseCase {
       const created = await this.links.tryCreate(link);
 
       if (created) {
+        await this.redirectCache.invalidate(created.code);
         return {
           link: created,
           shortUrl: this.shortUrlBuilder.build(created.code),

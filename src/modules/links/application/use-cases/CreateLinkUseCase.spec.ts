@@ -80,6 +80,7 @@ function setup() {
   const shortUrlBuilder = {
     build: jest.fn().mockReturnValue('https://api.example.com/l/abcdefgh'),
   };
+  const redirectCache = { invalidate: jest.fn() };
   const useCase = new CreateLinkUseCase(
     links as never,
     experts as never,
@@ -89,6 +90,7 @@ function setup() {
     normalizer as never,
     utmBuilder as never,
     shortUrlBuilder as never,
+    redirectCache as never,
   );
 
   links.tryCreate.mockResolvedValue(link());
@@ -102,6 +104,7 @@ function setup() {
     normalizer,
     utmBuilder,
     shortUrlBuilder,
+    redirectCache,
   };
 }
 

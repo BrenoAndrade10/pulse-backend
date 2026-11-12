@@ -7,7 +7,7 @@ import { LinkStatus } from '../../domain/enums/LinkStatus';
 import type { CreateLinkOutput } from '../../application/use-cases/CreateLinkUseCase';
 import { YupValidationPipe } from '../../../../shared/presentation/pipes/YupValidationPipe';
 import { createLinkSchema } from '../schemas/LinkSchemas';
-import { LinksController } from './LinksControllers';
+import { LinksController } from './LinksController';
 
 describe('LinksController', () => {
   const auth = {
