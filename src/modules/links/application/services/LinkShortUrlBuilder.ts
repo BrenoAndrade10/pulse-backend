@@ -6,12 +6,17 @@ export class LinkShortUrlBuilder {
   private readonly baseUrl: string;
 
   constructor() {
-    const configuredUrl = Environment.vars?.API_PUBLIC_URL?.trim();
+    const linksPublicUrl = Environment.vars?.LINKS_PUBLIC_URL?.trim();
+    const apiPublicUrl = Environment.vars?.API_PUBLIC_URL?.trim();
+    const configuredUrl = linksPublicUrl || apiPublicUrl;
+    const configuredVariable = linksPublicUrl
+      ? 'LINKS_PUBLIC_URL'
+      : 'API_PUBLIC_URL';
     if (configuredUrl) {
       const url = new URL(configuredUrl);
       if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') {
         throw new Error(
-          'API_PUBLIC_URL deve usar HTTPS em produção para links curtos.',
+          `${configuredVariable} deve usar HTTPS em produção para links curtos.`,
         );
       }
       this.baseUrl = url.toString();
@@ -20,7 +25,7 @@ export class LinkShortUrlBuilder {
 
     if (process.env.NODE_ENV === 'production') {
       throw new Error(
-        'API_PUBLIC_URL é obrigatório em produção para links curtos.',
+        'LINKS_PUBLIC_URL ou API_PUBLIC_URL é obrigatório em produção para links curtos.',
       );
     }
 

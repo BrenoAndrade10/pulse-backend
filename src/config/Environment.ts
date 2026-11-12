@@ -45,6 +45,21 @@ export class Environment {
           return false;
         }
       }),
+    LINKS_PUBLIC_URL: yup
+      .string()
+      .optional()
+      .test(
+        'http-url',
+        'LINKS_PUBLIC_URL deve ser uma URL http(s).',
+        (value) => {
+          if (!value) return true;
+          try {
+            return /^https?:$/.test(new URL(value).protocol);
+          } catch {
+            return false;
+          }
+        },
+      ),
     RESEND_API_KEY: yup.string().optional(),
     EMAIL_FROM: yup.string().optional(),
 

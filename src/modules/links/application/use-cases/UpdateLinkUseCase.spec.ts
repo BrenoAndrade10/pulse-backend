@@ -155,7 +155,11 @@ describe('UpdateLinkUseCase', () => {
     const context = setup();
     await context.useCase.execute(
       'link-id',
-      { campaign: 'Nova campanha', utm: { content: null } },
+      {
+        campaign: 'Nova campanha',
+        utm: { content: null },
+        regenerateUtm: false,
+      },
       auth,
     );
     expect(context.links.updateByTenant).toHaveBeenCalledWith(

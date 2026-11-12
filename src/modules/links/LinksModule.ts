@@ -13,6 +13,7 @@ import {
 } from './application/services/DestinationUrlNormalizer';
 import { LinkShortUrlBuilder } from './application/services/LinkShortUrlBuilder';
 import { LinkUtmBuilder } from './application/services/LinkUtmBuilder';
+import { buildLinkBlockedHosts } from './application/services/LinkDestinationPolicy';
 import { LINKS_REPOSITORY } from './domain/repositories/LinksRepository';
 import { LinkOrmEntity } from './infra/entities/LinkOrmEntity';
 import { TypeOrmLinksRepository } from './infra/repositories/TypeOrmLinksRepository';
@@ -65,14 +66,12 @@ import type { Redis } from '@upstash/redis';
     {
       provide: LINK_DESTINATION_POLICY,
       useFactory: () => {
-        const apiPublicUrl = Environment.vars?.API_PUBLIC_URL;
-        const blockedHosts = apiPublicUrl
-          ? [new URL(apiPublicUrl).hostname]
-          : [];
-
         return {
           allowLocal: process.env.NODE_ENV !== 'production',
-          blockedHosts,
+          blockedHosts: buildLinkBlockedHosts(
+            Environment.vars?.LINKS_PUBLIC_URL,
+            Environment.vars?.API_PUBLIC_URL,
+          ),
         };
       },
     },

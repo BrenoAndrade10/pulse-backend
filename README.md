@@ -54,6 +54,8 @@ The backend already exposes the base webhook used by Meta/Instagram:
 
 Environment variables:
 
+`LINKS_PUBLIC_URL` is optional and defines the public domain used in short links. When omitted, `API_PUBLIC_URL` is used.
+
 ```bash
 DATABASE_URL=postgresql://user:password@host/database?sslmode=require
 META_WEBHOOK_VERIFY_TOKEN=choose-a-private-verification-token
@@ -62,6 +64,7 @@ META_ACCESS_TOKEN=meta-page-or-system-user-access-token
 META_INSTAGRAM_USER_ID=instagram-business-or-creator-account-id
 META_GRAPH_API_VERSION=v21.0
 META_TOKENS_ENCRYPTION_KEY=32-byte-base64-or-hex-key
+LINKS_PUBLIC_URL=https://links.example.com
 ```
 
 `DATABASE_URL` must point to your Neon Postgres database. SSL is enabled in the TypeORM datasource for Neon.

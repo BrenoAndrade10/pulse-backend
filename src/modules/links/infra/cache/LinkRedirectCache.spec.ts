@@ -1,5 +1,6 @@
 import type { Redis } from '@upstash/redis';
 import { LinkRedirectCache } from './LinkRedirectCache';
+import { LinkStatus } from '../../domain/enums/LinkStatus';
 
 const entry = {
   v: 1 as const,
@@ -9,7 +10,7 @@ const entry = {
   launchId: null,
   destinationUrl: 'https://example.com',
   destinationVersion: 1,
-  status: 'active' as const,
+  status: LinkStatus.ACTIVE,
   utm: {
     source: null,
     medium: null,
